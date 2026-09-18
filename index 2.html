@@ -380,10 +380,10 @@ function applyPalette(key){
   if(!el){el=document.createElement('style');el.id='paletteStyle';document.head.appendChild(el)}
   el.textContent=`:root{${v(P.l)}}@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){${v(P.d)}}}:root[data-theme="dark"]{${v(P.d)}}`;
 }
-const HOME_SECTIONS=[['balance','إجمالي الرصيد','💰'],['budget','ميزانية الشهر','📊'],['reminders','التذكيرات المالية','🔔'],['installments','أقساط الديون','📅'],['wallets','المحافظ والحسابات','👛'],['recent','آخر المعاملات','🧾']];
+const HOME_SECTIONS=[['balance','إجمالي الرصيد','💰'],['budget','ميزانية الشهر','📊'],['income','الدخل المتكرر','📥'],['reminders','التذكيرات المالية','🔔'],['installments','أقساط الديون','📅'],['wallets','المحافظ والحسابات','👛'],['recent','آخر المعاملات','🧾']];
 function homeLayout(){
   const ids=HOME_SECTIONS.map(x=>x[0]);const saved=(S.settings.homeOrder||[]).filter(x=>ids.includes(x.id));
-  ids.forEach(id=>{if(!saved.find(x=>x.id===id))saved.push({id,on:true})});return saved;
+  ids.forEach((id,i)=>{if(!saved.find(x=>x.id===id))saved.splice(Math.min(i,saved.length),0,{id,on:true})});return saved;
 }
 const REP={none:'لا يتكرر',weekly:'أسبوعي',biweekly:'كل أسبوعين',monthly:'شهري',quarterly:'كل 3 أشهر',yearly:'سنوي'};
 const isRec=r=>r.repeat&&r.repeat!=='none';
@@ -677,6 +677,7 @@ function renderHome(){
       :`<div class="head"><span>لم تحدد ميزانية شهرية بعد</span></div><button class="link" data-act="settings">تحديد الميزانية</button>`}
       </div>`,
     reminders:()=>remindersHomeHTML(),
+    income:()=>incomeHomeHTML(),
     installments:()=>upcomingHTML(),
     wallets:()=>`<div class="section-h"><h2>المحافظ والحسابات</h2><button class="link" data-act="new-wallet">إضافة</button></div>
       <div class="group">
@@ -776,15 +777,22 @@ function remRow(r){
       ${r.done?'':`<div style="display:flex;gap:5px;align-items:center">${r.auto&&walletById(r.autoWalletId)?'<span class="auto">⚡</span>':''}${isRec(r)?`<span class="auto" title="${REP[r.repeat]}">🔁 ${REP[r.repeat]}</span>`:''}<span class="pri p${p}" aria-label="أولوية ${PRI[p].l}">${PRI[p].s}</span></div>`}
     </div></div>`;
 }
+function incomeHomeHTML(){
+  const list=sortReminders((S.reminders||[]).filter(r=>isInc(r)&&!r.done));
+  const cmEnd=periodEnd(curPeriod());
+  const expected=list.filter(r=>{const st=remStatus(r);return st.due&&st.due<=cmEnd}).reduce((a,r)=>a+(+r.amount||0),0);
+  return `<div class="section-h"><h2>الدخل المتكرر</h2><button class="link" data-act="new-income">إضافة</button></div>
+    ${list.length?`<div class="dues-sum" style="margin-top:0"><span>متوقع هذا الشهر <b class="pos">${money(expected,{dec:false})}</b></span><span>${fmtN(list.length,false)} مصدر دخل</span></div>`:''}
+    <div class="group">${list.length?list.map(remRow).join(''):`<div class="empty"><b>لا دخل مسجّل</b>أضف راتبك أو أي دخل ثابت ليُسجَّل في محفظتك تلقائيًا في تاريخه.<br><button class="btn" data-act="new-income">إضافة دخل</button></div>`}</div>`;
+}
 function remindersHomeHTML(){
-  const open=sortReminders((S.reminders||[]).filter(r=>!r.done));
+  const open=sortReminders((S.reminders||[]).filter(r=>!r.done&&!isInc(r)));
   const cmEnd=periodEnd(curPeriod());
   const dueNow=open.filter(r=>{const st=remStatus(r);return st.due&&st.due<=cmEnd});
-  const thisMonth=dueNow.filter(r=>!isInc(r)).reduce((a,r)=>a+(+r.amount||0),0);
-  const incMonth=dueNow.filter(isInc).reduce((a,r)=>a+(+r.amount||0),0);
+  const thisMonth=dueNow.reduce((a,r)=>a+(+r.amount||0),0);
   const shown=open.slice(0,5);
   return `<div class="section-h"><h2>التذكيرات المالية</h2><button class="link" data-act="new-rem">إضافة</button></div>
-    ${open.length?`<div class="dues-sum" style="margin-top:0"><span>مستحق هذا الشهر <b>${money(thisMonth,{dec:false})}</b></span>${incMonth?`<span>دخل متوقع <b class="pos">${money(incMonth,{dec:false})}</b></span>`:''}<span>${fmtN(open.length,false)} تذكير مفتوح</span>${open.some(r=>remStatus(r).late)?`<span class="neg">${fmtN(open.filter(r=>remStatus(r).late).length,false)} متأخر</span>`:''}</div>`:''}
+    ${open.length?`<div class="dues-sum" style="margin-top:0"><span>مستحق هذا الشهر <b>${money(thisMonth,{dec:false})}</b></span><span>${fmtN(open.length,false)} تذكير مفتوح</span>${open.some(r=>remStatus(r).late)?`<span class="neg">${fmtN(open.filter(r=>remStatus(r).late).length,false)} متأخر</span>`:''}</div>`:''}
     <div class="group">${shown.length?shown.map(remRow).join(''):`<div class="empty"><b>لا تذكيرات مفتوحة</b>أضف فاتورة أو مبلغًا تريد تذكّر دفعه.</div>`}
     ${open.length>5?`<button class="row" data-act="goto-rem" style="justify-content:center;color:var(--accent);font-weight:600">عرض كل التذكيرات (${fmtN(open.length,false)})</button>`:''}</div>`;
 }
@@ -877,22 +885,20 @@ function planLine(d,i){
 function debtsSeg(){return `<div class="seg" style="margin-bottom:12px"><button class="${debtsTab==='debts'?'on':''}" data-act="dtab" data-k="debts">الديون والأقساط</button><button class="${debtsTab==='rem'?'on':''}" data-act="dtab" data-k="rem">التذكيرات المالية</button></div>`}
 function renderDebts(){if(debtsTab==='rem')return renderReminders();renderDebtsList()}
 function renderReminders(){
-  const all=S.reminders||[];const t0=today();const cm=curPeriod();const nm=shiftMonth(cm,1);
+  const all=(S.reminders||[]).filter(r=>!isInc(r));const t0=today();const cm=curPeriod();const nm=shiftMonth(cm,1);
   const open=all.filter(r=>!r.done);
   const inMonth=(r,m)=>{const st=remStatus(r);return st.due&&periodOf(st.due)===m};
-  const sumThis=open.filter(r=>!isInc(r)&&(()=>{const st=remStatus(r);return st.due&&st.due<=periodEnd(cm)})()).reduce((a,r)=>a+(+r.amount||0),0);
-  const sumNext=open.filter(r=>!isInc(r)&&inMonth(r,nm)).reduce((a,r)=>a+(+r.amount||0),0);
-  const sumInc=open.filter(r=>isInc(r)&&(()=>{const st=remStatus(r);return st.due&&st.due<=periodEnd(cm)})()).reduce((a,r)=>a+(+r.amount||0),0);
+  const sumThis=open.filter(r=>{const st=remStatus(r);return st.due&&st.due<=periodEnd(cm)}).reduce((a,r)=>a+(+r.amount||0),0);
+  const sumNext=open.filter(r=>inMonth(r,nm)).reduce((a,r)=>a+(+r.amount||0),0);
   let list;
   if(remFilter==='open')list=open;
   else if(remFilter==='this')list=open.filter(r=>{const st=remStatus(r);return st.due&&st.due<=periodEnd(cm)});
   else if(remFilter==='next')list=open.filter(r=>inMonth(r,nm));
   else if(remFilter==='high')list=open.filter(r=>(r.priority||1)===3);
   else if(remFilter==='rec')list=open.filter(isRec);
-  else if(remFilter==='income')list=open.filter(isInc);
   else list=all.filter(r=>r.done);
   list=sortReminders(list);
-  const fl=[['open','المفتوحة'],['this','هذا الشهر'],['next','الشهر القادم'],['income','الدخل'],['rec','المتكررة'],['high','أولوية !!!'],['done','المنجزة']];
+  const fl=[['open','المفتوحة'],['this','هذا الشهر'],['next','الشهر القادم'],['rec','المتكررة'],['high','أولوية !!!'],['done','المنجزة']];
   $('#p-debts').innerHTML=`
   <div class="top">
     <div><h1>التذكيرات</h1><div class="sub">${open.some(r=>remStatus(r).late)?`<span class="neg">${fmtN(open.filter(r=>remStatus(r).late).length,false)} متأخر</span>`:'المدفوعات المستحقة والفواتير'}</div></div>
@@ -902,7 +908,6 @@ function renderReminders(){
   <div class="dsum">
     <div class="tile"><div class="k"><i style="background:var(--exp)"></i>هذا الشهر</div><div class="v">${money(sumThis,{dec:false})}</div><div class="t2" style="font-size:12px">${periodName(cm)}</div></div>
     <div class="tile"><div class="k"><i style="background:var(--warn)"></i>الشهر القادم</div><div class="v">${money(sumNext,{dec:false})}</div><div class="t2" style="font-size:12px">${periodName(nm)}</div></div>
-    ${sumInc?`<div class="tile" style="grid-column:1/-1"><div class="k"><i style="background:var(--inc)"></i>دخل متوقع هذا الشهر</div><div class="v pos">${money(sumInc,{dec:false})}</div></div>`:''}
   </div>
   <div class="chips">${fl.map(([k,l])=>`<button class="chip ${remFilter===k?'on':''}" data-act="remfilter" data-k="${k}">${l}</button>`).join('')}</div>
   <div class="group" style="margin-top:6px">${list.length?list.map(remRow).join(''):`<div class="empty"><b>${all.length?'لا تذكيرات هنا':'لا توجد تذكيرات'}</b>${all.length?'':'سجّل الفواتير والمبالغ التي تريد تذكّر دفعها، مع موعدها وأولويتها.'}<br><button class="btn" data-act="new-rem">إضافة تذكير</button></div>`}</div>`;
@@ -1341,9 +1346,9 @@ function paymentSheet(id,presetAmount){
 }
 
 /* ----- reminder sheets ----- */
-function reminderForm(id){
+function reminderForm(id,presetKind){
   const x=id?(S.reminders||[]).find(r=>r.id===id):null;
-  const d=x?{...x}:{kind:'expense',auto:false,autoWalletId:S.wallets[0]?.id||'',title:'',amount:'',priority:1,dueMode:'date',date:addDays(today(),7),month:curPeriod(),walletId:S.wallets[0]?.id||'',category:'فواتير',note:'',repeat:'none'};
+  const d=x?{...x}:{kind:presetKind==='income'?'income':'expense',category:presetKind==='income'?'راتب':'فواتير',auto:presetKind==='income',autoWalletId:S.wallets[0]?.id||'',title:'',amount:'',priority:1,dueMode:'date',date:addDays(today(),7),month:curPeriod(),walletId:S.wallets[0]?.id||'',note:'',repeat:presetKind==='income'?'monthly':'none'};
   if(!d.repeat)d.repeat='none';
   if(!d.kind)d.kind='expense';
   if(!d.autoWalletId)d.autoWalletId=S.wallets[0]?.id||'';
@@ -1406,7 +1411,7 @@ function reminderForm(id){
       S.txs.forEach(t=>{if(t.reminderId===x.id)delete t.reminderId});S.reminders=S.reminders.filter(r=>r.id!==x.id);closeSheet();commit('حُذف التذكير')});
     if(!x)setTimeout(()=>$('#ra',ov)?.focus(),300);
   };
-  openSheet({title:x?'تعديل التذكير':'تذكير مالي جديد',body:body(),onMount:mount,onSave(){
+  openSheet({title:x?(isInc(x)?'تعديل الدخل':'تعديل التذكير'):(d.kind==='income'?'دخل متكرر جديد':'تذكير مالي جديد'),body:body(),onMount:mount,onSave(){
     grab();const amount=toNum(d.amount);
     if(!d.title.trim()){toast('اكتب اسم التذكير');return false}
     if(!(amount>0)){toast('أدخل المبلغ');return false}
@@ -1574,6 +1579,7 @@ document.addEventListener('click',e=>{
     case 'dtab':debtsTab=el.dataset.k;renderDebts();break;
     case 'remfilter':remFilter=el.dataset.k;renderReminders();break;
     case 'new-rem':reminderForm();break;
+    case 'new-income':reminderForm(null,'income');break;
     case 'rem':reminderForm(id);break;
     case 'rem-pay':remPaySheet(id);break;
     case 'layout':layoutSheet();break;
