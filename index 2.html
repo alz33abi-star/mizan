@@ -387,6 +387,27 @@ function homeLayout(){
 }
 const REP={none:'لا يتكرر',weekly:'أسبوعي',biweekly:'كل أسبوعين',monthly:'شهري',quarterly:'كل 3 أشهر',yearly:'سنوي'};
 const isRec=r=>r.repeat&&r.repeat!=='none';
+const remKind=r=>r.kind==='income'?'income':'expense';
+const isInc=r=>remKind(r)==='income';
+const remVerbs=r=>isInc(r)?{pay:'تم الاستلام',paid:'استُلم',sheet:'تسجيل الاستلام',from:'الإيداع في',auto:'إيداع تلقائي'}:{pay:'تم الدفع',paid:'دُفع',sheet:'تسجيل الدفع',from:'الدفع من',auto:'خصم تلقائي'};
+function processAutoRem(){
+  let n=0;const t0=today();
+  for(const r of (S.reminders||[])){
+    if(!r.auto||r.done||r.dueMode!=='date'||!walletById(r.autoWalletId))continue;
+    for(let g=0;g<24;g++){
+      if(r.done||!r.date||r.date>t0||r.date<(r.autoFrom||t0))break;
+      const amount=r2(+r.amount||0);if(!(amount>0))break;
+      const inc=isInc(r);
+      const t={id:uid(),type:inc?'income':'expense',amount,category:r.category,walletId:r.autoWalletId,date:r.date,
+        note:(inc?'إيداع تلقائي: ':'خصم تلقائي: ')+r.title,reminderId:r.id,auto:true};
+      S.txs.push(t);
+      r.history=r.history||[];r.history.push({id:uid(),date:r.date,amount,txId:t.id,due:r.date,auto:true});
+      n++;
+      if(isRec(r))advanceRem(r);else{r.done=true;r.doneDate=t.date;r.txId=t.id}
+    }
+  }
+  return n;
+}
 function advanceRem(r,dir=1){
   if(r.dueMode==='date'&&r.date)r.date=addPeriod(r.date,r.repeat,dir);
   else if(r.dueMode==='month'&&r.month)r.month=shiftMonth(r.month,dir*({quarterly:3,yearly:12}[r.repeat]||1));
@@ -482,6 +503,7 @@ function seed(){
     schedule:[{id:uid(),date:shiftMonth(curMonth(),-2)+'-14',amount:1000},{id:uid(),date:curMonth()+'-28',amount:1000},{id:uid(),date:shiftMonth(curMonth(),1)+'-28',amount:1000}]});
   payOn(lend,1000,lend.schedule[0].date,bank.id);
   const R=(title,amount,pri,o)=>d.reminders.push({id:uid(),title,amount,priority:pri,dueMode:'date',date:'',month:'',walletId:bank.id,category:'فواتير',note:'',done:false,createdAt:t0,...o});
+  R('الراتب الشهري',9500,3,{kind:'income',date:addDays(t0,9),repeat:'monthly',category:'راتب',auto:true,autoWalletId:bank.id,autoFrom:addDays(t0,9)});
   R('فاتورة الكهرباء',420,2,{date:addDays(t0,5),repeat:'monthly'});
   R('راتب العاملة',1500,3,{date:addDays(t0,11),repeat:'monthly',category:'رواتب وعمالة'});
   R('باقة الجوال',230,2,{dueMode:'month',month:curMonth(),repeat:'monthly',category:'اتصالات'});
@@ -747,20 +769,22 @@ function sortReminders(list){
 function remRow(r){
   const st=remStatus(r);const p=r.priority||1;
   return `<div class="row ${r.done?'done':''}" data-act="rem" data-id="${r.id}" role="button" tabindex="0">
-    <button class="donebtn ${r.done?'on':''}" data-act="${r.done?'rem':'rem-pay'}" data-id="${r.id}" aria-label="${r.done?'منجز':'تم الدفع'}">✓</button>
-    <div class="grow"><div class="t1">${esc(r.title)}</div><div class="t2">${r.done?`دُفع ${dateStr(r.doneDate)}`:st.text}</div></div>
+    <button class="donebtn ${r.done?'on':''}" data-act="${r.done?'rem':'rem-pay'}" data-id="${r.id}" aria-label="${r.done?'منجز':remVerbs(r).pay}" style="${isInc(r)&&!r.done?'border-color:var(--inc);color:var(--inc)':''}">✓</button>
+    <div class="grow"><div class="t1">${isInc(r)?'📥 ':''}${esc(r.title)}</div><div class="t2">${r.done?`${remVerbs(r).paid} ${dateStr(r.doneDate)}`:st.text}</div></div>
     <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
-      <div class="amt ${r.done?'':'neg'}">${money(+r.amount||0)}</div>
-      ${r.done?'':`<div style="display:flex;gap:5px;align-items:center">${isRec(r)?`<span class="auto" title="${REP[r.repeat]}">🔁 ${REP[r.repeat]}</span>`:''}<span class="pri p${p}" aria-label="أولوية ${PRI[p].l}">${PRI[p].s}</span></div>`}
+      <div class="amt ${r.done?'':(isInc(r)?'pos':'neg')}">${isInc(r)&&!r.done?'+':''}${money(+r.amount||0)}</div>
+      ${r.done?'':`<div style="display:flex;gap:5px;align-items:center">${r.auto&&walletById(r.autoWalletId)?'<span class="auto">⚡</span>':''}${isRec(r)?`<span class="auto" title="${REP[r.repeat]}">🔁 ${REP[r.repeat]}</span>`:''}<span class="pri p${p}" aria-label="أولوية ${PRI[p].l}">${PRI[p].s}</span></div>`}
     </div></div>`;
 }
 function remindersHomeHTML(){
   const open=sortReminders((S.reminders||[]).filter(r=>!r.done));
   const cmEnd=periodEnd(curPeriod());
-  const thisMonth=open.filter(r=>{const st=remStatus(r);return st.due&&st.due<=cmEnd}).reduce((a,r)=>a+(+r.amount||0),0);
+  const dueNow=open.filter(r=>{const st=remStatus(r);return st.due&&st.due<=cmEnd});
+  const thisMonth=dueNow.filter(r=>!isInc(r)).reduce((a,r)=>a+(+r.amount||0),0);
+  const incMonth=dueNow.filter(isInc).reduce((a,r)=>a+(+r.amount||0),0);
   const shown=open.slice(0,5);
   return `<div class="section-h"><h2>التذكيرات المالية</h2><button class="link" data-act="new-rem">إضافة</button></div>
-    ${open.length?`<div class="dues-sum" style="margin-top:0"><span>هذا الشهر <b>${money(thisMonth,{dec:false})}</b></span><span>${fmtN(open.length,false)} تذكير مفتوح</span>${open.some(r=>remStatus(r).late)?`<span class="neg">${fmtN(open.filter(r=>remStatus(r).late).length,false)} متأخر</span>`:''}</div>`:''}
+    ${open.length?`<div class="dues-sum" style="margin-top:0"><span>مستحق هذا الشهر <b>${money(thisMonth,{dec:false})}</b></span>${incMonth?`<span>دخل متوقع <b class="pos">${money(incMonth,{dec:false})}</b></span>`:''}<span>${fmtN(open.length,false)} تذكير مفتوح</span>${open.some(r=>remStatus(r).late)?`<span class="neg">${fmtN(open.filter(r=>remStatus(r).late).length,false)} متأخر</span>`:''}</div>`:''}
     <div class="group">${shown.length?shown.map(remRow).join(''):`<div class="empty"><b>لا تذكيرات مفتوحة</b>أضف فاتورة أو مبلغًا تريد تذكّر دفعه.</div>`}
     ${open.length>5?`<button class="row" data-act="goto-rem" style="justify-content:center;color:var(--accent);font-weight:600">عرض كل التذكيرات (${fmtN(open.length,false)})</button>`:''}</div>`;
 }
@@ -856,17 +880,19 @@ function renderReminders(){
   const all=S.reminders||[];const t0=today();const cm=curPeriod();const nm=shiftMonth(cm,1);
   const open=all.filter(r=>!r.done);
   const inMonth=(r,m)=>{const st=remStatus(r);return st.due&&periodOf(st.due)===m};
-  const sumThis=open.filter(r=>{const st=remStatus(r);return st.due&&st.due<=periodEnd(cm)}).reduce((a,r)=>a+(+r.amount||0),0);
-  const sumNext=open.filter(r=>inMonth(r,nm)).reduce((a,r)=>a+(+r.amount||0),0);
+  const sumThis=open.filter(r=>!isInc(r)&&(()=>{const st=remStatus(r);return st.due&&st.due<=periodEnd(cm)})()).reduce((a,r)=>a+(+r.amount||0),0);
+  const sumNext=open.filter(r=>!isInc(r)&&inMonth(r,nm)).reduce((a,r)=>a+(+r.amount||0),0);
+  const sumInc=open.filter(r=>isInc(r)&&(()=>{const st=remStatus(r);return st.due&&st.due<=periodEnd(cm)})()).reduce((a,r)=>a+(+r.amount||0),0);
   let list;
   if(remFilter==='open')list=open;
   else if(remFilter==='this')list=open.filter(r=>{const st=remStatus(r);return st.due&&st.due<=periodEnd(cm)});
   else if(remFilter==='next')list=open.filter(r=>inMonth(r,nm));
   else if(remFilter==='high')list=open.filter(r=>(r.priority||1)===3);
   else if(remFilter==='rec')list=open.filter(isRec);
+  else if(remFilter==='income')list=open.filter(isInc);
   else list=all.filter(r=>r.done);
   list=sortReminders(list);
-  const fl=[['open','المفتوحة'],['this','هذا الشهر'],['next','الشهر القادم'],['rec','المتكررة'],['high','أولوية !!!'],['done','المدفوعة']];
+  const fl=[['open','المفتوحة'],['this','هذا الشهر'],['next','الشهر القادم'],['income','الدخل'],['rec','المتكررة'],['high','أولوية !!!'],['done','المنجزة']];
   $('#p-debts').innerHTML=`
   <div class="top">
     <div><h1>التذكيرات</h1><div class="sub">${open.some(r=>remStatus(r).late)?`<span class="neg">${fmtN(open.filter(r=>remStatus(r).late).length,false)} متأخر</span>`:'المدفوعات المستحقة والفواتير'}</div></div>
@@ -876,6 +902,7 @@ function renderReminders(){
   <div class="dsum">
     <div class="tile"><div class="k"><i style="background:var(--exp)"></i>هذا الشهر</div><div class="v">${money(sumThis,{dec:false})}</div><div class="t2" style="font-size:12px">${periodName(cm)}</div></div>
     <div class="tile"><div class="k"><i style="background:var(--warn)"></i>الشهر القادم</div><div class="v">${money(sumNext,{dec:false})}</div><div class="t2" style="font-size:12px">${periodName(nm)}</div></div>
+    ${sumInc?`<div class="tile" style="grid-column:1/-1"><div class="k"><i style="background:var(--inc)"></i>دخل متوقع هذا الشهر</div><div class="v pos">${money(sumInc,{dec:false})}</div></div>`:''}
   </div>
   <div class="chips">${fl.map(([k,l])=>`<button class="chip ${remFilter===k?'on':''}" data-act="remfilter" data-k="${k}">${l}</button>`).join('')}</div>
   <div class="group" style="margin-top:6px">${list.length?list.map(remRow).join(''):`<div class="empty"><b>${all.length?'لا تذكيرات هنا':'لا توجد تذكيرات'}</b>${all.length?'':'سجّل الفواتير والمبالغ التي تريد تذكّر دفعها، مع موعدها وأولويتها.'}<br><button class="btn" data-act="new-rem">إضافة تذكير</button></div>`}</div>`;
@@ -1316,12 +1343,15 @@ function paymentSheet(id,presetAmount){
 /* ----- reminder sheets ----- */
 function reminderForm(id){
   const x=id?(S.reminders||[]).find(r=>r.id===id):null;
-  const d=x?{...x}:{title:'',amount:'',priority:1,dueMode:'date',date:addDays(today(),7),month:curPeriod(),walletId:S.wallets[0]?.id||'',category:'فواتير',note:'',repeat:'none'};
+  const d=x?{...x}:{kind:'expense',auto:false,autoWalletId:S.wallets[0]?.id||'',title:'',amount:'',priority:1,dueMode:'date',date:addDays(today(),7),month:curPeriod(),walletId:S.wallets[0]?.id||'',category:'فواتير',note:'',repeat:'none'};
   if(!d.repeat)d.repeat='none';
+  if(!d.kind)d.kind='expense';
+  if(!d.autoWalletId)d.autoWalletId=S.wallets[0]?.id||'';
   if(d.dueMode==='month'&&!d.month)d.month=curPeriod();
   const cm=curPeriod(),nm=shiftMonth(cm,1);
   const modeKey=()=>d.dueMode==='date'?'date':d.dueMode==='none'?'none':(d.month===nm?'next':'this');
-  const body=()=>{const mk=modeKey();return `
+  const body=()=>{const mk=modeKey();const V=remVerbs(d);return `
+    <div class="seg" style="margin-top:6px"><button class="${d.kind!=='income'?'on':''}" data-kind="expense">مصروف / التزام</button><button class="${d.kind==='income'?'on':''}" data-kind="income">دخل</button></div>
     <div class="amount-in"><span>المبلغ (${curHTML()})</span><input id="ra" inputmode="decimal" placeholder="0" value="${d.amount}"></div>
     <div class="field-group">
       <div class="field"><label for="rt">الاسم</label><input id="rt" value="${esc(d.title)}" placeholder="مثال: فاتورة الإنترنت" maxlength="50"></div>
@@ -1337,20 +1367,29 @@ function reminderForm(id){
       <div class="field"><label for="rrep">التكرار</label><select id="rrep">${Object.entries(REP).filter(([k])=>mk==='date'||['none','monthly','quarterly','yearly'].includes(k)).map(([k,l])=>`<option value="${k}" ${d.repeat===k?'selected':''}>🔁 ${l}</option>`).join('')}</select></div>
     </div>
     ${mk==='none'?'<div class="note">التكرار يحتاج موعدًا: اختر تاريخًا محددًا أو شهرًا.</div>':(d.repeat!=='none'?`<div class="note">بعد تسجيل الدفع يُنقل التذكير تلقائيًا إلى موعده التالي (${REP[d.repeat]})، ويبقى سجل الدفعات السابقة.</div>`:'')}
+    <div class="flabel">${V.auto}</div>
+    <div class="field-group">
+      <div class="field"><label for="rauto" style="flex:1;width:auto">${V.auto} في تاريخه</label><input type="checkbox" class="switch" id="rauto" ${d.auto?'checked':''} ${mk==='date'?'':'disabled'}></div>
+      ${d.auto&&mk==='date'?`<div class="field"><label for="raw">${d.kind==='income'?'إلى محفظة':'من محفظة'}</label><select id="raw">${walletOptions(d.autoWalletId)}</select></div>`:''}
+    </div>
+    <div class="note">${mk==='date'?(d.auto?`يُسجَّل المبلغ تلقائيًا ${d.kind==='income'?'كدخل':'كمصروف'} في تاريخه عند فتح التطبيق${isRec(d)?'، ثم ينتقل للموعد التالي':''}.`:'فعّله للراتب أو أي مبلغ ينزل أو يُخصم تلقائيًا في تاريخ ثابت.'):'التسجيل التلقائي يحتاج تاريخًا محددًا.'}</div>
     <div class="flabel">الأولوية</div>
     <div class="seg">${[1,2,3].map(n=>`<button class="${(+d.priority||1)===n?'on':''}" data-pri="${n}"><b style="letter-spacing:1px">${PRI[n].s}</b> ${PRI[n].l}</button>`).join('')}</div>
     <div class="field-group">
-      <div class="field"><label for="rw">الدفع من</label><select id="rw">${walletOptions(d.walletId,'تحديد عند الدفع')}</select></div>
-      <div class="field"><label for="rc">التصنيف</label><select id="rc">${CATS.expense.map(c=>`<option ${c.n===d.category?'selected':''}>${esc(c.n)}</option>`).join('')}</select></div>
+      <div class="field"><label for="rw">${d.kind==='income'?'الإيداع في':'الدفع من'}</label><select id="rw">${walletOptions(d.walletId,'تحديد عند التسجيل')}</select></div>
+      <div class="field"><label for="rc">التصنيف</label><select id="rc">${CATS[d.kind==='income'?'income':'expense'].map(c=>`<option ${c.n===d.category?'selected':''}>${esc(c.n)}</option>`).join('')}</select></div>
       <div class="field"><label for="rn">ملاحظة</label><input id="rn" value="${esc(d.note||'')}" placeholder="اختياري" maxlength="80"></div>
     </div>
-    ${x?`<div class="btns">${x.done?'<button class="btn ghost block" id="rundo">إلغاء حالة الدفع</button>':'<button class="btn block" id="rpay">تم الدفع</button>'}${isRec(x)?'<button class="btn ghost block" id="rskip">تخطي هذه المرة</button>':''}<button class="btn danger block" id="rdel">حذف التذكير</button></div>
+    ${x?`<div class="btns">${x.done?`<button class="btn ghost block" id="rundo">إلغاء ${isInc(x)?'الاستلام':'حالة الدفع'}</button>`:`<button class="btn block" id="rpay">${remVerbs(x).pay}</button>`}${isRec(x)?'<button class="btn ghost block" id="rskip">تخطي هذه المرة</button>':''}<button class="btn danger block" id="rdel">حذف التذكير</button></div>
       ${isRec(x)&&(x.history||[]).length?`<div class="flabel">سجل الدفعات</div><div class="group">${[...x.history].reverse().map((e,i)=>`<div class="row"><div class="ic" style="background:${e.skipped?'var(--fill)':'var(--incSoft)'};font-size:15px">${e.skipped?'⏭':'✓'}</div><div class="grow"><div class="t1">${e.skipped?'تُخطّي':money(+e.amount||0)}</div><div class="t2">${e.skipped?'موعد':'دُفع'} ${e.skipped?(x.dueMode==='month'?periodName(e.due):dateStr(e.due)):dateStr(e.date)}</div></div>${i===0?`<button class="link" style="color:var(--exp)" data-delh="${e.id}">تراجع</button>`:''}</div>`).join('')}</div><div class="note">«تراجع» يحذف آخر دفعة ومعاملتها ويعيد الموعد السابق.</div>`:''}
       ${x.done?`<div class="note">دُفع في ${dateStr(x.doneDate)}${x.txId&&S.txs.find(t=>t.id===x.txId)?' وسُجّل كمعاملة':''}.</div>`:''}`:''}`};
-  const grab=()=>{d.amount=$('#ra').value;d.title=$('#rt').value;if($('#rd'))d.date=$('#rd').value;if($('#rrep'))d.repeat=$('#rrep').value;d.walletId=$('#rw').value;d.category=$('#rc').value;d.note=$('#rn').value};
+  const grab=()=>{d.amount=$('#ra').value;d.title=$('#rt').value;if($('#rauto'))d.auto=$('#rauto').checked;if($('#raw'))d.autoWalletId=$('#raw').value;if($('#rd'))d.date=$('#rd').value;if($('#rrep'))d.repeat=$('#rrep').value;d.walletId=$('#rw').value;d.category=$('#rc').value;d.note=$('#rn').value};
   const hint=()=>{const h=$('#rdHint');if(h){const v=$('#rd').value;h.innerHTML=v?relDays(daysBetween(today(),v)):''}};
   const mount=ov=>{
     const rr=()=>{grab();$('.sheet-body',ov).innerHTML=body();mount(ov)};
+    $$('[data-kind]',ov).forEach(b=>b.onclick=()=>{grab();d.kind=b.dataset.kind;
+      const list=CATS[d.kind==='income'?'income':'expense'];if(!list.some(c=>c.n===d.category))d.category=list[0].n;rr()});
+    const ra=$('#rauto',ov);if(ra)ra.onchange=()=>{grab();rr()};
     $$('[data-mode]',ov).forEach(b=>b.onclick=()=>{grab();const m=b.dataset.mode;
       if(m==='date'){d.dueMode='date';if(!d.date)d.date=addDays(today(),7)}else if(m==='none'){d.dueMode='none';d.repeat='none'}else{d.dueMode='month';d.month=m==='this'?cm:nm;if(['weekly','biweekly'].includes(d.repeat))d.repeat='monthly'}rr()});
     const rs=$('#rrep',ov);if(rs)rs.onchange=()=>rr();
@@ -1360,7 +1399,7 @@ function reminderForm(id){
     if($('#rpay',ov))$('#rpay',ov).onclick=()=>{grab();remPaySheet(x.id)};
     if($('#rskip',ov))$('#rskip',ov).onclick=()=>confirmBox('تخطي هذه المرة؟','يُنقل التذكير إلى موعده التالي دون تسجيل دفع.','تخطي',()=>{
       x.history=x.history||[];x.history.push({id:uid(),skipped:true,date:today(),amount:0,txId:null,due:x.dueMode==='date'?x.date:x.month});advanceRem(x);closeSheet();commit(`الموعد القادم: ${remNextText(x)}`)});
-    $$('[data-delh]',ov).forEach(b=>b.onclick=()=>confirmBox('التراجع عن آخر دفعة؟','ستُحذف معاملتها ويعود التذكير إلى موعده السابق.','تراجع',()=>{removeRemEntry(x,b.dataset.delh);commit('تم التراجع');reminderForm(x.id)}));
+    $$('[data-delh]',ov).forEach(b=>b.onclick=()=>confirmBox('التراجع عن آخر دفعة؟','ستُحذف معاملتها ويعود التذكير إلى موعده السابق.','تراجع',()=>{removeRemEntry(x,b.dataset.delh);if(x.auto){const tm=addDays(today(),1);if(!x.autoFrom||x.autoFrom<tm)x.autoFrom=tm}commit('تم التراجع');reminderForm(x.id)}));
     if($('#rundo',ov))$('#rundo',ov).onclick=()=>confirmBox('إلغاء حالة الدفع؟','ستُحذف المعاملة المسجّلة لهذا التذكير إن وُجدت.','إلغاء الدفع',()=>{
       if(x.txId)S.txs=S.txs.filter(t=>t.id!==x.txId);if(x.history&&x.history.length)x.history.pop();x.done=false;x.txId=null;x.doneDate='';closeSheet();commit('أُعيد التذكير مفتوحًا')});
     if($('#rdel',ov))$('#rdel',ov).onclick=()=>confirmBox('حذف التذكير؟','المعاملة المسجّلة له (إن وُجدت) تبقى في سجل المعاملات.','حذف',()=>{
@@ -1373,31 +1412,37 @@ function reminderForm(id){
     if(!(amount>0)){toast('أدخل المبلغ');return false}
     if(d.dueMode==='date'&&!d.date){toast('حدد التاريخ');return false}
     if(d.dueMode==='none')d.repeat='none';
-    const rec={title:d.title.trim(),amount:r2(amount),priority:+d.priority||1,dueMode:d.dueMode,date:d.dueMode==='date'?d.date:'',month:d.dueMode==='month'?d.month:'',walletId:d.walletId,category:d.category,note:d.note.trim(),repeat:d.repeat||'none'};
+    if(d.dueMode!=='date')d.auto=false;
+    if(d.auto&&!walletById(d.autoWalletId)){toast('اختر محفظة التسجيل التلقائي');return false}
+    const rec={kind:d.kind==='income'?'income':'expense',auto:!!d.auto,autoWalletId:d.auto?d.autoWalletId:'',
+      autoFrom:d.auto?((x&&x.auto&&x.autoFrom)?x.autoFrom:today()):'',
+      title:d.title.trim(),amount:r2(amount),priority:+d.priority||1,dueMode:d.dueMode,date:d.dueMode==='date'?d.date:'',month:d.dueMode==='month'?d.month:'',walletId:d.walletId,category:d.category,note:d.note.trim(),repeat:d.repeat||'none'};
     if(rec.repeat!=='none'&&x&&x.done){rec.done=false;rec.doneDate='';rec.txId=null}
     if(x)Object.assign(x,rec);else{S.reminders=S.reminders||[];S.reminders.push({id:uid(),done:false,createdAt:today(),...rec})}
-    commit(x?'حُفظ التذكير':'أُضيف التذكير');
+    const an=processAutoRem();
+    commit(an?`سُجّل ${fmtN(an,false)} مبلغ تلقائيًا`:(x?'حُفظ التذكير':'أُضيف التذكير'));
   }});
 }
 function remPaySheet(id){
   const r=S.reminders.find(x=>x.id===id);if(!r)return;
-  openSheet({title:'تسجيل الدفع',saveLabel:'تم',body:`
+  const V=remVerbs(r);const inc=isInc(r);
+  openSheet({title:V.sheet,saveLabel:'تم',body:`
     <div class="amount-in"><span>${esc(r.title)}</span><input id="qa" inputmode="decimal" value="${r.amount}"></div>
     <div class="field-group">
-      <div class="field"><label for="qw">الدفع من</label><select id="qw">${walletOptions(walletById(r.walletId)?r.walletId:S.wallets[0]?.id,'بدون تسجيل معاملة')}</select></div>
-      <div class="field"><label for="qc">التصنيف</label><select id="qc">${CATS.expense.map(c=>`<option ${c.n===r.category?'selected':''}>${esc(c.n)}</option>`).join('')}</select></div>
+      <div class="field"><label for="qw">${V.from}</label><select id="qw">${walletOptions(walletById(r.walletId)?r.walletId:S.wallets[0]?.id,'بدون تسجيل معاملة')}</select></div>
+      <div class="field"><label for="qc">التصنيف</label><select id="qc">${CATS[inc?'income':'expense'].map(c=>`<option ${c.n===r.category?'selected':''}>${esc(c.n)}</option>`).join('')}</select></div>
       <div class="field"><label for="qd">التاريخ</label><input id="qd" type="date" value="${today()}"></div>
     </div>
-    <div class="note">${isRec(r)?`عند اختيار محفظة يُسجَّل المبلغ كمصروف، ثم ينتقل التذكير إلى موعده القادم (${REP[r.repeat]}).`:'عند اختيار محفظة يُسجَّل المبلغ كمصروف فيها، ويُنقل التذكير إلى المدفوعة.'}</div>`,
+    <div class="note">${isRec(r)?`عند اختيار محفظة يُسجَّل المبلغ ${inc?'كدخل':'كمصروف'}، ثم ينتقل التذكير إلى موعده القادم (${REP[r.repeat]}).`:`عند اختيار محفظة يُسجَّل المبلغ ${inc?'كدخل فيها':'كمصروف فيها'}، ويُنقل التذكير إلى المنجزة.`}</div>`,
     onSave(){
       const amount=toNum($('#qa').value);const w=$('#qw').value;const date=$('#qd').value||today();
       if(w&&!(amount>0)){toast('أدخل مبلغًا صحيحًا');return false}
       let txId=null;
-      if(w){const t={id:uid(),type:'expense',amount:r2(amount),category:$('#qc').value,walletId:w,date,note:r.title,reminderId:r.id};S.txs.push(t);txId=t.id}
+      if(w){const t={id:uid(),type:inc?'income':'expense',amount:r2(amount),category:$('#qc').value,walletId:w,date,note:r.title,reminderId:r.id};S.txs.push(t);txId=t.id}
       r.history=r.history||[];r.history.push({id:uid(),date,amount:amount>0?r2(amount):0,txId,due:r.dueMode==='date'?r.date:r.month});
       if(amount>0)r.amount=r2(amount);
-      if(isRec(r)){advanceRem(r);commit(`تم الدفع ✓ · الموعد القادم: ${remNextText(r)}`)}
-      else{r.done=true;r.doneDate=date;r.txId=txId;commit('تم تسجيل الدفع ✓')}
+      if(isRec(r)){advanceRem(r);commit(`${V.pay} ✓ · الموعد القادم: ${remNextText(r)}`)}
+      else{r.done=true;r.doneDate=date;r.txId=txId;commit(`${V.pay} ✓`)}
     }});
 }
 function layoutSheet(){
@@ -1539,10 +1584,10 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape'){if($('#dialog').cla
 
 /* ============ boot ============ */
 S=load();if(!S.settings.firstUse)S.settings.firstUse=today();
-{const n=processAutoPay();save();applyPalette(S.settings.palette);applyTheme(S.settings.theme);render();if(n)setTimeout(()=>toast(`سُجّل ${fmtN(n,false)} قسط تلقائيًا`),600)}
+{const n=processAutoPay()+processAutoRem();save();applyPalette(S.settings.palette);applyTheme(S.settings.theme);render();if(n)setTimeout(()=>toast(`سُجّل ${fmtN(n,false)} مبلغ تلقائيًا`),600)}
 let lastDay=today();
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState!=='visible')return;
-  const n=processAutoPay();if(n||lastDay!==today()){lastDay=today();save();render();if(n)toast(`سُجّل ${fmtN(n,false)} قسط تلقائيًا`)}});
+  const n=processAutoPay()+processAutoRem();if(n||lastDay!==today()){lastDay=today();save();render();if(n)toast(`سُجّل ${fmtN(n,false)} مبلغ تلقائيًا`)}});
 try{if(navigator.storage&&navigator.storage.persist)navigator.storage.persist()}catch(e){}
 if('serviceWorker' in navigator&&location.protocol.startsWith('http')){window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}))}
 </script>
