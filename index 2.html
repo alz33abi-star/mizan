@@ -180,7 +180,9 @@ div.row[data-act]:active{background:var(--fill)}
 #hsecs>.hsec:first-child>.section-h{margin-top:8px}
 .customize{display:block;margin:26px auto 0;background:var(--card);border:0;border-radius:999px;padding:9px 18px;color:var(--accent);font-size:14px;font-weight:600;box-shadow:var(--shadow)}
 .pri{min-width:34px;height:26px;border-radius:8px;display:inline-grid;place-items:center;font-weight:800;font-size:13px;letter-spacing:1px;flex:none;padding:0 6px}
-.p1{background:var(--fill);color:var(--text2)}.p2{background:var(--warnSoft);color:var(--warn)}.p3{background:var(--expSoft);color:var(--exp)}
+.p1{background:var(--incSoft);color:var(--inc)}.p2{background:var(--warnSoft);color:var(--warn)}.p3{background:var(--expSoft);color:var(--exp)}
+.seg button.prio1{color:var(--inc)}.seg button.prio2{color:var(--warn)}.seg button.prio3{color:var(--exp)}
+.seg button.prio1.on{background:var(--inc);color:#fff}.seg button.prio2.on{background:var(--warn);color:#fff}.seg button.prio3.on{background:var(--exp);color:#fff}
 .donebtn{width:32px;height:32px;border-radius:50%;border:2px solid var(--accent);background:none;color:var(--accent);flex:none;font-size:15px;font-weight:700;display:grid;place-items:center;padding:0}
 .donebtn.on{background:var(--accent);color:var(--onAccent)}
 .row.done .t1{text-decoration:line-through;color:var(--text2)}
@@ -671,11 +673,7 @@ function renderHome(){
     balance:()=>`<section class="hero">
       <div class="lbl">إجمالي الرصيد في ${fmtN(S.wallets.length,false)} ${S.wallets.length>2&&S.wallets.length<11?'محافظ':'محفظة'}</div>
       <div class="big"><span class="num">${total<0?'−':''}${fmtN(Math.abs(total))}</span><small>${curHTML()}</small></div>
-      <div class="meta"><span>الأصول <b>${money(assets,{dec:false})}</b></span><span>ديون متبقية <b>${money(owe,{dec:false})}</b></span></div>
-      <div class="scale" aria-hidden="true">
-        <div class="bar"><i style="width:${incW}%;background:var(--gold)"></i><i style="flex:1;background:rgba(255,255,255,.3)"></i></div>
-        <div class="legend"><span>الدخل</span><span>المصروفات</span></div>
-      </div></section>`,
+      <div class="meta"><span>الأصول <b>${money(assets,{dec:false})}</b></span><span>ديون متبقية <b>${money(owe,{dec:false})}</b></span></div></section>`,
     budget:()=>`<div class="section-h">
       <h2>ميزانية الشهر</h2>
       <div class="monthnav">
@@ -1451,7 +1449,7 @@ function reminderForm(id,presetKind){
     </div>
     <div class="note">${mk==='date'?(d.auto?`يُسجَّل المبلغ تلقائيًا ${d.kind==='income'?'كدخل':'كمصروف'} في تاريخه عند فتح التطبيق${isRec(d)?'، ثم ينتقل للموعد التالي':''}.`:'فعّله للراتب أو أي مبلغ ينزل أو يُخصم تلقائيًا في تاريخ ثابت.'):'التسجيل التلقائي يحتاج تاريخًا محددًا.'}</div>
     <div class="flabel">الأولوية</div>
-    <div class="seg">${[1,2,3].map(n=>`<button class="${(+d.priority||1)===n?'on':''}" data-pri="${n}"><b style="letter-spacing:1px">${PRI[n].s}</b> ${PRI[n].l}</button>`).join('')}</div>
+    <div class="seg">${[1,2,3].map(n=>`<button class="prio${n} ${(+d.priority||1)===n?'on':''}" data-pri="${n}"><b style="letter-spacing:1px">${PRI[n].s}</b> ${PRI[n].l}</button>`).join('')}</div>
     <div class="field-group">
       <div class="field"><label for="rw">${d.kind==='income'?'الإيداع في':'الدفع من'}</label><select id="rw">${walletOptions(d.walletId,'تحديد عند التسجيل')}</select></div>
       <div class="field"><label for="rc">التصنيف</label><select id="rc">${cats(d.kind).map(c=>`<option ${c.n===d.category?'selected':''}>${esc(c.n)}</option>`).join('')}</select></div>
