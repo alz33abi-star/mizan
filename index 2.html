@@ -706,7 +706,7 @@ function renderHome(){
         </button>`).join('')
       :`<div class="empty"><b>لا توجد محافظ</b>أضف حسابك البنكي أو محفظتك النقدية لتبدأ.<br><button class="btn" data-act="new-wallet">إضافة محفظة</button></div>`}
       </div>`,
-    recent:()=>`<div class="section-h"><h2>آخر المعاملات</h2><button class="link" data-act="goto-tx">عرض الكل</button></div>
+    recent:()=>`<div class="section-h"><h2>آخر المعاملات</h2><div style="display:flex;gap:14px;align-items:center"><button class="link" data-act="goto-tx">عرض الكل</button><button class="iconbtn solid" data-act="new-tx" aria-label="إضافة معاملة" style="width:32px;height:32px">${ICON.plus}</button></div></div>
       <div class="group">${recent.length?recent.map(txRow).join(''):`<div class="empty"><b>لا معاملات بعد</b>سجّل أول مصروف أو دخل.</div>`}</div>`
   };
   const parts=homeLayout().filter(x=>x.on&&SEC[x.id]).map(x=>`<div class="hsec">${SEC[x.id]()}</div>`).join('');
@@ -852,15 +852,20 @@ function needsBackup(){
   const ref=S.settings.lastBackup||S.settings.firstUse||today();
   return daysBetween(ref,today())>=14;
 }
+function txDay(s){
+  if(s===today())return 'اليوم';
+  if(s===addDays(today(),-1))return 'أمس';
+  return s.slice(0,4)===today().slice(0,4)?DF_DM.format(parseD(s)):dateStr(s);
+}
 function txRow(t){
   let icon,color,title,sub,amt;
   const w=walletById(t.walletId);
   if(t.type==='transfer'){
     const to=walletById(t.toWalletId);icon='⇄';color='var(--tr)';title=t.note||'تحويل';
-    sub=`${esc(w?.name||'محذوفة')} ← ${esc(to?.name||'محذوفة')}`;amt=`<div class="amt trc">${money(+t.amount)}</div>`;
+    sub=`${txDay(t.date)} · ${esc(w?.name||'محذوفة')} ← ${esc(to?.name||'محذوفة')}`;amt=`<div class="amt trc">${money(+t.amount)}</div>`;
   }else{
     const m=catMeta(t.type,t.category);icon=m.i;color=m.c;title=t.note||m.n;
-    sub=`${esc(m.n)} · ${esc(w?.name||'بدون محفظة')}`;
+    sub=`${txDay(t.date)} · ${esc(m.n)} · ${esc(w?.name||'بدون محفظة')}`;
     amt=`<div class="amt ${t.type==='income'?'pos':'neg'}">${money(t.type==='income'?+t.amount:-t.amount,{sign:true})}</div>`;
   }
   return `<button class="row" data-act="tx" data-id="${t.id}">
@@ -1147,13 +1152,15 @@ function txSheet(id,presetType){
   const body=()=>`
     ${linked?'':`<div class="seg" style="margin-top:6px">${[['expense','مصروف'],['income','دخل'],['transfer','تحويل']].map(([k,l])=>`<button class="${d.type===k?'on':''}" data-type="${k}">${l}</button>`).join('')}</div>`}
     <div class="amount-in"><span>المبلغ (${curHTML()})</span><input id="ta" inputmode="decimal" placeholder="0" value="${d.amount}" style="color:${d.type==='income'?'var(--inc)':d.type==='expense'?'var(--exp)':'var(--tr)'}"></div>
+    <div class="field-group" style="margin-top:8px">
+      <div class="field"><label for="tn">الوصف</label><input id="tn" value="${esc(d.note)}" placeholder="اختياري" maxlength="60"></div>
+    </div>
     ${linked?`<div class="note">هذه المعاملة دفعة للدين «${esc(linked.name)}». تعديل المبلغ أو حذفها ينعكس على الدين.</div>`:''}
     ${d.type!=='transfer'?`<div class="flabel">التصنيف</div><div class="cats">${cats(d.type).map(c=>`<button class="cat ${c.n===d.category?'on':''}" data-cat="${esc(c.n)}"><span class="e">${c.i}</span>${esc(c.n)}</button>`).join('')}</div>`:''}
     <div class="field-group">
+      <div class="field"><label for="td">التاريخ</label><input id="td" type="date" value="${d.date}"></div>
       <div class="field"><label for="tw">${d.type==='transfer'?'من':'المحفظة'}</label><select id="tw">${walletOptions(d.walletId)}</select></div>
       ${d.type==='transfer'?`<div class="field"><label for="tw2">إلى</label><select id="tw2">${walletOptions(d.toWalletId)}</select></div>`:''}
-      <div class="field"><label for="td">التاريخ</label><input id="td" type="date" value="${d.date}"></div>
-      <div class="field"><label for="tn">الوصف</label><input id="tn" value="${esc(d.note)}" placeholder="اختياري" maxlength="60"></div>
     </div>
     ${t?`<div class="btns"><button class="btn danger block" id="tdel">حذف المعاملة</button></div>`:''}`;
   const grab=()=>{d.amount=$('#ta').value;d.walletId=$('#tw').value;if($('#tw2'))d.toWalletId=$('#tw2').value;d.date=$('#td').value||today();d.note=$('#tn').value};
