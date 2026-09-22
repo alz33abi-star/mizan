@@ -211,6 +211,12 @@ div.row[data-act]:active{background:var(--fill)}
 .addring{width:44px;height:44px;border-radius:50%;border:2px solid var(--accent);background:var(--accentSoft);color:var(--accent);display:grid;place-items:center;padding:0;transition:transform .15s}
 .addring svg{width:22px;height:22px}
 .addring:active{transform:scale(.92)}
+.grp-h{display:flex;align-items:center;justify-content:space-between;width:100%;border:0;background:none;padding:18px 4px 8px;text-align:start;gap:8px}
+.grp-t{font-size:17px;font-weight:700;display:flex;align-items:center;gap:8px}
+.grp-t .dot{width:9px;height:9px;border-radius:50%;display:inline-block}
+.grp-s{font-size:12.5px;color:var(--text2);display:flex;align-items:center;gap:8px;white-space:nowrap}
+.grp-c{display:inline-block;transition:transform .2s;font-size:18px;line-height:1;color:var(--text3)}
+.grp-c.open{transform:rotate(-90deg)}
 /* reports */
 .card{background:var(--card);border-radius:16px;padding:16px;box-shadow:var(--shadow);margin-top:12px}
 .card h3{margin:0 0 2px;font-size:17px}
@@ -944,6 +950,25 @@ function planLine(d,i){
 }
 function debtsSeg(){return `<div class="seg" style="margin-bottom:12px"><button class="${debtsTab==='debts'?'on':''}" data-act="dtab" data-k="debts">الديون والأقساط</button><button class="${debtsTab==='rem'?'on':''}" data-act="dtab" data-k="rem">التذكيرات المالية</button></div>`}
 function renderDebts(){if(debtsTab==='rem')return renderReminders();renderDebtsList()}
+const MONTHLY_FACTOR={weekly:52/12,biweekly:26/12,monthly:1,quarterly:1/3,yearly:1/12};
+function remGroupsHTML(list){
+  const t0=today();const soon=addDays(t0,3);
+  const urgent=list.filter(r=>{const st=remStatus(r);return st.late||(st.due&&st.due<=soon)});
+  const rest=list.filter(r=>!urgent.includes(r));
+  const rec=rest.filter(isRec),other=rest.filter(r=>!isRec(r));
+  const allRec=(S.reminders||[]).filter(r=>!isInc(r)&&!r.done&&isRec(r));
+  const fixed=allRec.reduce((a,r)=>a+(+r.amount||0)*(MONTHLY_FACTOR[r.repeat]||1),0);
+  const col=S.settings.remCollapsed||{};
+  const grp=(id,title,sub,items,tone)=>items.length?`
+    <button class="grp-h" data-act="grp-toggle" data-k="${id}" aria-expanded="${!col[id]}">
+      <span class="grp-t">${tone?`<i class="dot" style="background:${tone}"></i>`:''}${title} <span class="t2">(${fmtN(items.length,false)})</span></span>
+      <span class="grp-s">${sub||''}<span class="grp-c ${col[id]?'':'open'}">‹</span></span>
+    </button>
+    ${col[id]?'':`<div class="group">${items.map(remRow).join('')}</div>`}`:'';
+  return grp('urgent','يحتاج انتباهك','متأخر أو خلال 3 أيام',urgent,'var(--exp)')+
+    grp('monthly','الالتزامات الشهرية',`الثابت ${money(r2(fixed),{dec:false})} شهريًا`,rec,'var(--accent)')+
+    grp('other','تذكيرات أخرى','لمرة واحدة',other,'var(--text3)');
+}
 function renderReminders(){
   const all=(S.reminders||[]).filter(r=>!isInc(r));const t0=today();const cm=curPeriod();const nm=shiftMonth(cm,1);
   const open=all.filter(r=>!r.done);
@@ -970,7 +995,7 @@ function renderReminders(){
     <div class="tile"><div class="k"><i style="background:var(--warn)"></i>الشهر القادم</div><div class="v">${money(sumNext,{dec:false})}</div><div class="t2" style="font-size:12px">${periodName(nm)}</div></div>
   </div>
   <div class="chips">${fl.map(([k,l])=>`<button class="chip ${remFilter===k?'on':''}" data-act="remfilter" data-k="${k}">${l}</button>`).join('')}</div>
-  <div class="group" style="margin-top:6px">${list.length?list.map(remRow).join(''):`<div class="empty"><b>${all.length?'لا تذكيرات هنا':'لا توجد تذكيرات'}</b>${all.length?'':'سجّل الفواتير والمبالغ التي تريد تذكّر دفعها، مع موعدها وأولويتها.'}<br><button class="btn" data-act="new-rem">إضافة تذكير</button></div>`}</div>`;
+  ${remFilter==='open'&&list.length?remGroupsHTML(list):`<div class="group" style="margin-top:6px">${list.length?list.map(remRow).join(''):`<div class="empty"><b>${all.length?'لا تذكيرات هنا':'لا توجد تذكيرات'}</b>${all.length?'':'سجّل الفواتير والمبالغ التي تريد تذكّر دفعها، مع موعدها وأولويتها.'}<br><button class="btn" data-act="new-rem">إضافة تذكير</button></div>`}</div>`}`;
 }
 function renderDebtsList(){
   const infos=S.debts.map(d=>({d,i:debtInfo(d)}));
@@ -1166,13 +1191,20 @@ function txSheet(id,presetType){
       <div class="field"><label for="tw">${d.type==='transfer'?'من':'المحفظة'}</label><select id="tw">${walletOptions(d.walletId)}</select></div>
       ${d.type==='transfer'?`<div class="field"><label for="tw2">إلى</label><select id="tw2">${walletOptions(d.toWalletId)}</select></div>`:''}
     </div>
+    ${!t&&d.type!=='transfer'?`<div class="field-group">
+      <div class="field"><label for="tmon" style="flex:1;width:auto">🔁 ${d.type==='income'?'دخل شهري متكرر':'معاملة شهرية (اشتراك / التزام)'}</label><input type="checkbox" class="switch" id="tmon" ${d.monthly?'checked':''}></div>
+      ${d.monthly?`<div class="field"><label for="tmauto" style="flex:1;width:auto">${d.type==='income'?'إيداع':'خصم'} تلقائي كل شهر</label><input type="checkbox" class="switch" id="tmauto" ${d.monthlyAuto!==false?'checked':''}></div>`:''}
+    </div>
+    ${d.monthly?`<div class="note">تُسجَّل هذه المعاملة الآن، ويُنشأ ${d.type==='income'?'دخل متكرر':'التزام شهري'} يتكرر في نفس اليوم من كل شهر${d.monthlyAuto!==false?' ويُسجَّل تلقائيًا':''}.</div>`:''}`:''}
+    ${t&&t.reminderId&&(S.reminders||[]).some(r=>r.id===t.reminderId&&isRec(r))?`<div class="note">🔁 هذه المعاملة جزء من ${t.type==='income'?'دخل متكرر':'التزام شهري'}. عدّل التكرار من ${t.type==='income'?'«الدخل المتكرر» في الرئيسية':'التذكيرات المالية'}.</div>`:''}
     ${t?`<div class="btns"><button class="btn danger block" id="tdel">حذف المعاملة</button></div>`:''}`;
-  const grab=()=>{d.amount=$('#ta').value;d.walletId=$('#tw').value;if($('#tw2'))d.toWalletId=$('#tw2').value;d.date=$('#td').value||today();d.note=$('#tn').value};
+  const grab=()=>{d.amount=$('#ta').value;d.walletId=$('#tw').value;if($('#tmon'))d.monthly=$('#tmon').checked;if($('#tmauto'))d.monthlyAuto=$('#tmauto').checked;if($('#tw2'))d.toWalletId=$('#tw2').value;d.date=$('#td').value||today();d.note=$('#tn').value};
   const mount=ov=>{
     $$('[data-type]',ov).forEach(b=>b.onclick=()=>{grab();d.type=b.dataset.type;if(d.type!=='transfer'&&!cats(d.type).some(c=>c.n===d.category))d.category=cats(d.type)[0].n;
       if(d.type==='transfer'&&(!d.toWalletId||d.toWalletId===d.walletId))d.toWalletId=(S.wallets.find(w=>w.id!==d.walletId)||{}).id||'';
       $('.sheet-body',ov).innerHTML=body();mount(ov)});
     $$('[data-cat]',ov).forEach(b=>b.onclick=()=>{d.category=b.dataset.cat;$$('[data-cat]',ov).forEach(x=>x.classList.toggle('on',x===b))});
+    ['#tmon','#tmauto'].forEach(q=>{const e=$(q,ov);if(e)e.onchange=()=>{grab();$('.sheet-body',ov).innerHTML=body();mount(ov)}});
     if($('#tdel',ov))$('#tdel',ov).onclick=()=>confirmBox('حذف المعاملة؟',linked?'ستُحذف الدفعة المقابلة من الدين أيضًا.':'لا يمكن التراجع عن هذا الإجراء.','حذف',()=>{
       S.txs=S.txs.filter(x=>x.id!==t.id);if(linked){linked.payments=linked.payments.filter(p=>p.txId!==t.id);paymentRemoved(linked)}if(t.reminderId){const rm=(S.reminders||[]).find(r=>r.id===t.reminderId);if(rm){const e=(rm.history||[]).find(h=>h.txId===t.id);if(isRec(rm)&&e){e.txId=null;removeRemEntry(rm,e.id)}else{rm.done=false;rm.txId=null;rm.doneDate='';if(e)rm.history=rm.history.filter(h=>h!==e)}}}closeSheet();commit('حُذفت المعاملة')});
     if(!t)setTimeout(()=>$('#ta',ov)?.focus(),300);
@@ -1184,8 +1216,19 @@ function txSheet(id,presetType){
     const rec={id:t?t.id:uid(),type:d.type,amount,category:d.type==='transfer'?'':d.category,walletId:d.walletId,toWalletId:d.type==='transfer'?d.toWalletId:undefined,date:d.date,note:d.note.trim()};
     if(t?.debtId)rec.debtId=t.debtId;
     if(t){Object.keys(t).forEach(k=>delete t[k]);Object.assign(t,rec);if(linked){const p=linked.payments.find(p=>p.txId===t.id);if(p){p.amount=amount;p.date=d.date}}}
-    else S.txs.push(rec);
-    commit(t?'حُفظت التعديلات':'سُجّلت المعاملة');
+    else{
+      S.txs.push(rec);
+      if(d.monthly&&rec.type!=='transfer'){
+        const m=catMeta(rec.type,rec.category);
+        const r={id:uid(),kind:rec.type==='income'?'income':'expense',title:rec.note||m.n,amount:rec.amount,priority:2,dueMode:'date',
+          date:addMonths(rec.date,1),month:'',walletId:rec.walletId,category:rec.category,note:'',repeat:'monthly',until:'',steps:[],
+          auto:d.monthlyAuto!==false,autoWalletId:d.monthlyAuto!==false?rec.walletId:'',autoFrom:d.monthlyAuto!==false?addMonths(rec.date,1):'',
+          done:false,createdAt:today(),history:[{id:uid(),date:rec.date,amount:rec.amount,txId:rec.id,due:rec.date}]};
+        S.reminders=S.reminders||[];S.reminders.push(r);rec.reminderId=r.id;
+        processAutoRem();
+      }
+    }
+    commit(t?'حُفظت التعديلات':(d.monthly?'سُجّلت المعاملة وأُنشئ التكرار الشهري 🔁':'سُجّلت المعاملة'));
   }});
 }
 
@@ -1717,6 +1760,7 @@ document.addEventListener('click',e=>{
     case 'goto-rem':debtsTab='rem';remFilter='open';go('debts');break;
     case 'dtab':debtsTab=el.dataset.k;renderDebts();break;
     case 'remfilter':remFilter=el.dataset.k;renderReminders();break;
+    case 'grp-toggle':{const c=S.settings.remCollapsed||(S.settings.remCollapsed={});c[el.dataset.k]=!c[el.dataset.k];save();renderReminders();break}
     case 'new-rem':reminderForm();break;
     case 'new-income':reminderForm(null,'income');break;
     case 'rem':reminderForm(id);break;
