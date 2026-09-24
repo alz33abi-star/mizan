@@ -462,6 +462,7 @@ function load(){
 function normalize(d){
   const b=blank();
   if(d.settings&&!d.settings.symMigrated){if(['ر.س','د.إ','AED','درهم',''].includes(d.settings.currency||''))d.settings.currency='AED_SYM';d.settings.symMigrated=true}
+  (d.txs||[]).forEach(t=>{if(t.ts==null)t.ts=0});
   return {version:1,settings:{...b.settings,...(d.settings||{})},wallets:d.wallets||[],txs:d.txs||[],
     debts:(d.debts||[]).map(migrateDebt),reminders:d.reminders||[],categories:d.categories||null};
 }
@@ -476,7 +477,9 @@ function migrateDebt(x){
   if(!d.createdAt)d.createdAt=d.startDate||today();
   return d;
 }
-function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){toast('تعذّر الحفظ في ذاكرة الجهاز، صدّر نسخة احتياطية من الإعدادات')}}
+let tsSeq=0;
+function stampTxs(){const n=Date.now();S.txs.forEach(t=>{if(t.ts==null)t.ts=n+(tsSeq++)})}
+function save(){stampTxs();try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){toast('تعذّر الحفظ في ذاكرة الجهاز، صدّر نسخة احتياطية من الإعدادات')}}
 
 function seed(){
   const d=blank();
@@ -530,6 +533,7 @@ function seed(){
   R('رسوم التسجيل للنادي',650,3,{date:addDays(t0,-2),category:'ترفيه'});
   R('تجديد تأمين السيارة',1850,3,{dueMode:'month',month:shiftMonth(curMonth(),1),category:'مواصلات'});
   R('هدية زواج صديق',500,1,{date:addDays(t0,20),category:'أخرى'});
+  d.txs.forEach(t=>t.ts=0);
   return d;
 }
 
@@ -677,7 +681,8 @@ function renderHome(){
   const owe=S.debts.filter(d=>d.kind==='owe').reduce((a,d)=>a+debtInfo(d).remaining,0);
   const assets=Object.values(b).filter(x=>x>0).reduce((a,x)=>a+x,0);
   const incW=inc+exp?inc/(inc+exp)*100:50;
-  const recent=[...S.txs].sort((a,b)=>b.date.localeCompare(a.date)||0).slice(0,5);
+  stampTxs();
+  const recent=[...S.txs].sort((a,b)=>(b.ts||0)-(a.ts||0)||b.date.localeCompare(a.date)).slice(0,5);
   const pct=budget?exp/budget*100:0;const pColor=exp>budget+0.001?'var(--exp)':pct>80?'var(--warn)':'var(--accent)';
   const SEC={
     balance:()=>`<section class="hero">
@@ -789,9 +794,9 @@ function sortReminders(list){
     if(!!a.done!==!!b.done)return a.done?1:-1;
     if(a.done)return (b.doneDate||'').localeCompare(a.doneDate||'');
     const sa=remStatus(a),sb=remStatus(b);
-    if(sa.late!==sb.late)return sa.late?-1:1;
-    if((b.priority||1)!==(a.priority||1))return (b.priority||1)-(a.priority||1);
-    return (sa.due||'9999').localeCompare(sb.due||'9999');
+    const dc=(sa.due||'9999').localeCompare(sb.due||'9999');
+    if(dc)return dc;
+    return (b.priority||1)-(a.priority||1);
   });
 }
 function remRow(r){
@@ -880,7 +885,7 @@ function txRow(t){
   }
   return `<button class="row" data-act="tx" data-id="${t.id}">
     <div class="ic" style="background:color-mix(in srgb, ${color} 15%, transparent)">${icon==='⇄'?`<span style="color:var(--tr);font-weight:700">⇄</span>`:icon}</div>
-    <div class="grow"><div class="t1">${esc(title)}</div><div class="t2">${sub}</div></div>${amt}</button>`;
+    <div class="grow"><div class="t1">${t.auto?'<span class="auto">⚡</span> ':''}${esc(title)}</div><div class="t2">${sub}</div></div>${amt}</button>`;
 }
 
 /* ============ TRANSACTIONS ============ */
@@ -894,7 +899,7 @@ function filteredTx(){
     if(q){const w=walletById(t.walletId)?.name||'';const w2=walletById(t.toWalletId)?.name||'';
       const hay=`${t.note||''} ${t.category||''} ${w} ${w2} ${t.amount}`.toLowerCase();if(!hay.includes(q))return false}
     return true;
-  }).sort((a,b)=>b.date.localeCompare(a.date));
+  }).sort((a,b)=>b.date.localeCompare(a.date)||(b.ts||0)-(a.ts||0));
 }
 function renderTx(){
   const types=[['all','الكل'],['expense','مصروفات'],['income','دخل'],['transfer','تحويلات']];
