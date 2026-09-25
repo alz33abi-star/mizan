@@ -413,7 +413,7 @@ function processAutoRem(){
       if(r.done||!r.date||r.date>t0||r.date<(r.autoFrom||t0))break;
       const amount=r2(+r.amount||0);if(!(amount>0))break;
       const inc=isInc(r);
-      const t={id:uid(),type:inc?'income':'expense',amount,category:r.category,walletId:r.autoWalletId,date:r.date,
+      const t={id:uid(),type:inc?'income':'expense',amount,category:r.category,walletId:r.autoWalletId,date:r.date,time:autoTime(r.date),
         note:(inc?'إيداع تلقائي: ':'خصم تلقائي: ')+r.title,reminderId:r.id,auto:true};
       S.txs.push(t);
       r.history=r.history||[];r.history.push({id:uid(),date:r.date,amount,txId:t.id,due:r.date,auto:true});
@@ -646,7 +646,7 @@ function processAutoPay(){
       const i=debtInfo(d);
       if(i.done||!i.next||i.next>t0||i.next<(d.autoFrom||t0)||!(i.dueAmount>0))break;
       const t={id:uid(),type:d.kind==='owe'?'expense':'income',amount:r2(i.dueAmount),category:d.kind==='owe'?'سداد ديون':'تحصيل ديون',
-        walletId:d.autoWalletId,date:i.next,note:(d.kind==='owe'?'خصم تلقائي: ':'تحصيل تلقائي: ')+d.name,debtId:d.id,auto:true};
+        walletId:d.autoWalletId,date:i.next,time:autoTime(i.next),note:(d.kind==='owe'?'خصم تلقائي: ':'تحصيل تلقائي: ')+d.name,debtId:d.id,auto:true};
       S.txs.push(t);d.payments.push({id:uid(),amount:t.amount,date:t.date,txId:t.id,auto:true});stepAdvance(d);n++;
     }
   }
@@ -682,7 +682,7 @@ function renderHome(){
   const assets=Object.values(b).filter(x=>x>0).reduce((a,x)=>a+x,0);
   const incW=inc+exp?inc/(inc+exp)*100:50;
   stampTxs();
-  const recent=[...S.txs].sort((a,b)=>(b.ts||0)-(a.ts||0)||b.date.localeCompare(a.date)).slice(0,5);
+  const recent=[...S.txs].sort(txCmp).slice(0,5);
   const pct=budget?exp/budget*100:0;const pColor=exp>budget+0.001?'var(--exp)':pct>80?'var(--warn)':'var(--accent)';
   const SEC={
     balance:()=>`<section class="hero">
@@ -867,6 +867,11 @@ function needsBackup(){
   const ref=S.settings.lastBackup||S.settings.firstUse||today();
   return daysBetween(ref,today())>=14;
 }
+const nowTime=()=>{const d=new Date();return `${pad(d.getHours())}:${pad(d.getMinutes())}`};
+const DF_TIME=new Intl.DateTimeFormat('ar-u-nu-latn',{hour:'numeric',minute:'2-digit'});
+function fmtTime(hm){if(!hm)return '';const [h,m]=hm.split(':').map(Number);return DF_TIME.format(new Date(2000,0,1,h,m)).replace(/[\u061C\u200E\u200F]/g,'')}
+function txCmp(a,b){return b.date.localeCompare(a.date)||(b.time||'').localeCompare(a.time||'')||(b.ts||0)-(a.ts||0)}
+const autoTime=date=>date===today()?nowTime():'';
 function txDay(s){
   if(s===today())return 'اليوم';
   if(s===addDays(today(),-1))return 'أمس';
@@ -877,10 +882,10 @@ function txRow(t){
   const w=walletById(t.walletId);
   if(t.type==='transfer'){
     const to=walletById(t.toWalletId);icon='⇄';color='var(--tr)';title=t.note||'تحويل';
-    sub=`${txDay(t.date)} · ${esc(w?.name||'محذوفة')} ← ${esc(to?.name||'محذوفة')}`;amt=`<div class="amt trc">${money(+t.amount)}</div>`;
+    sub=`${txDay(t.date)}${t.time?' '+fmtTime(t.time):''} · ${esc(w?.name||'محذوفة')} ← ${esc(to?.name||'محذوفة')}`;amt=`<div class="amt trc">${money(+t.amount)}</div>`;
   }else{
     const m=catMeta(t.type,t.category);icon=m.i;color=m.c;title=t.note||m.n;
-    sub=`${txDay(t.date)} · ${esc(m.n)} · ${esc(w?.name||'بدون محفظة')}`;
+    sub=`${txDay(t.date)}${t.time?' '+fmtTime(t.time):''} · ${esc(m.n)} · ${esc(w?.name||'بدون محفظة')}`;
     amt=`<div class="amt ${t.type==='income'?'pos':'neg'}">${money(t.type==='income'?+t.amount:-t.amount,{sign:true})}</div>`;
   }
   return `<button class="row" data-act="tx" data-id="${t.id}">
@@ -899,7 +904,7 @@ function filteredTx(){
     if(q){const w=walletById(t.walletId)?.name||'';const w2=walletById(t.toWalletId)?.name||'';
       const hay=`${t.note||''} ${t.category||''} ${w} ${w2} ${t.amount}`.toLowerCase();if(!hay.includes(q))return false}
     return true;
-  }).sort((a,b)=>b.date.localeCompare(a.date)||(b.ts||0)-(a.ts||0));
+  }).sort(txCmp);
 }
 function renderTx(){
   const types=[['all','الكل'],['expense','مصروفات'],['income','دخل'],['transfer','تحويلات']];
@@ -1181,7 +1186,7 @@ function walletSheet(id){
 function txSheet(id,presetType){
   if(!S.wallets.length){toast('أضف محفظة أولًا');return walletSheet()}
   const t=id?S.txs.find(x=>x.id===id):null;
-  const d=t?{...t}:{type:presetType||'expense',amount:'',category:presetType==='income'?'راتب':'طعام',walletId:F.wallet||S.wallets[0].id,toWalletId:(S.wallets.find(w=>w.id!==(F.wallet||S.wallets[0].id))||{}).id||'',date:today(),note:''};
+  const d=t?{...t}:{type:presetType||'expense',amount:'',category:presetType==='income'?'راتب':'طعام',walletId:F.wallet||S.wallets[0].id,toWalletId:(S.wallets.find(w=>w.id!==(F.wallet||S.wallets[0].id))||{}).id||'',date:today(),time:nowTime(),note:''};
   const linked=t&&t.debtId?S.debts.find(x=>x.id===t.debtId):null;
   const body=()=>`
     ${linked?'':`<div class="seg" style="margin-top:6px">${[['expense','مصروف'],['income','دخل'],['transfer','تحويل']].map(([k,l])=>`<button class="${d.type===k?'on':''}" data-type="${k}">${l}</button>`).join('')}</div>`}
@@ -1193,6 +1198,7 @@ function txSheet(id,presetType){
     ${d.type!=='transfer'?`<div class="flabel">التصنيف</div><div class="cats">${cats(d.type).map(c=>`<button class="cat ${c.n===d.category?'on':''}" data-cat="${esc(c.n)}"><span class="e">${c.i}</span>${esc(c.n)}</button>`).join('')}</div>`:''}
     <div class="field-group">
       <div class="field"><label for="td">التاريخ</label><input id="td" type="date" value="${d.date}"></div>
+      <div class="field"><label for="tt">الوقت</label><input id="tt" type="time" value="${d.time||''}"></div>
       <div class="field"><label for="tw">${d.type==='transfer'?'من':'المحفظة'}</label><select id="tw">${walletOptions(d.walletId)}</select></div>
       ${d.type==='transfer'?`<div class="field"><label for="tw2">إلى</label><select id="tw2">${walletOptions(d.toWalletId)}</select></div>`:''}
     </div>
@@ -1203,7 +1209,7 @@ function txSheet(id,presetType){
     ${d.monthly?`<div class="note">تُسجَّل هذه المعاملة الآن، ويُنشأ ${d.type==='income'?'دخل متكرر':'التزام شهري'} يتكرر في نفس اليوم من كل شهر${d.monthlyAuto!==false?' ويُسجَّل تلقائيًا':''}.</div>`:''}`:''}
     ${t&&t.reminderId&&(S.reminders||[]).some(r=>r.id===t.reminderId&&isRec(r))?`<div class="note">🔁 هذه المعاملة جزء من ${t.type==='income'?'دخل متكرر':'التزام شهري'}. عدّل التكرار من ${t.type==='income'?'«الدخل المتكرر» في الرئيسية':'التذكيرات المالية'}.</div>`:''}
     ${t?`<div class="btns"><button class="btn danger block" id="tdel">حذف المعاملة</button></div>`:''}`;
-  const grab=()=>{d.amount=$('#ta').value;d.walletId=$('#tw').value;if($('#tmon'))d.monthly=$('#tmon').checked;if($('#tmauto'))d.monthlyAuto=$('#tmauto').checked;if($('#tw2'))d.toWalletId=$('#tw2').value;d.date=$('#td').value||today();d.note=$('#tn').value};
+  const grab=()=>{d.amount=$('#ta').value;d.walletId=$('#tw').value;if($('#tmon'))d.monthly=$('#tmon').checked;if($('#tmauto'))d.monthlyAuto=$('#tmauto').checked;if($('#tw2'))d.toWalletId=$('#tw2').value;d.date=$('#td').value||today();d.time=$('#tt')?$('#tt').value:'';d.note=$('#tn').value};
   const mount=ov=>{
     $$('[data-type]',ov).forEach(b=>b.onclick=()=>{grab();d.type=b.dataset.type;if(d.type!=='transfer'&&!cats(d.type).some(c=>c.n===d.category))d.category=cats(d.type)[0].n;
       if(d.type==='transfer'&&(!d.toWalletId||d.toWalletId===d.walletId))d.toWalletId=(S.wallets.find(w=>w.id!==d.walletId)||{}).id||'';
@@ -1218,8 +1224,9 @@ function txSheet(id,presetType){
     grab();const amount=toNum(d.amount);
     if(!(amount>0)){toast('أدخل مبلغًا أكبر من صفر');return false}
     if(d.type==='transfer'){if(S.wallets.length<2){toast('تحتاج محفظتين على الأقل للتحويل');return false}if(d.walletId===d.toWalletId){toast('اختر محفظتين مختلفتين');return false}}
-    const rec={id:t?t.id:uid(),type:d.type,amount,category:d.type==='transfer'?'':d.category,walletId:d.walletId,toWalletId:d.type==='transfer'?d.toWalletId:undefined,date:d.date,note:d.note.trim()};
+    const rec={id:t?t.id:uid(),type:d.type,amount,category:d.type==='transfer'?'':d.category,walletId:d.walletId,toWalletId:d.type==='transfer'?d.toWalletId:undefined,date:d.date,time:d.time||'',note:d.note.trim()};
     if(t?.debtId)rec.debtId=t.debtId;
+    if(t){if(t.reminderId)rec.reminderId=t.reminderId;if(t.auto)rec.auto=true;rec.ts=t.ts}
     if(t){Object.keys(t).forEach(k=>delete t[k]);Object.assign(t,rec);if(linked){const p=linked.payments.find(p=>p.txId===t.id);if(p){p.amount=amount;p.date=d.date}}}
     else{
       S.txs.push(rec);
@@ -1460,7 +1467,7 @@ function paymentSheet(id,presetAmount){
       const amount=toNum($('#pa').value);if(!(amount>0)){toast('أدخل مبلغًا صحيحًا');return false}
       if(amount>i.remaining+0.01){toast('المبلغ أكبر من المتبقي');return false}
       const date=$('#pd').value||today();const walletId=$('#pw').value;let txId=null;
-      if(walletId){const t={id:uid(),type:d.kind==='owe'?'expense':'income',amount,category:d.kind==='owe'?'سداد ديون':'تحصيل ديون',walletId,date,note:'دفعة: '+d.name,debtId:d.id};S.txs.push(t);txId=t.id}
+      if(walletId){const t={id:uid(),type:d.kind==='owe'?'expense':'income',amount,category:d.kind==='owe'?'سداد ديون':'تحصيل ديون',walletId,date,time:autoTime(date),note:'دفعة: '+d.name,debtId:d.id};S.txs.push(t);txId=t.id}
       d.payments.push({id:uid(),amount,date,txId});stepAdvance(d);
       commit('سُجّلت الدفعة');if(tab==='debts')setTimeout(()=>debtDetail(d.id),50);
     }});
@@ -1577,7 +1584,7 @@ function remPaySheet(id){
       const amount=toNum($('#qa').value);const w=$('#qw').value;const date=$('#qd').value||today();
       if(w&&!(amount>0)){toast('أدخل مبلغًا صحيحًا');return false}
       let txId=null;
-      if(w){const t={id:uid(),type:inc?'income':'expense',amount:r2(amount),category:$('#qc').value,walletId:w,date,note:r.title,reminderId:r.id};S.txs.push(t);txId=t.id}
+      if(w){const t={id:uid(),type:inc?'income':'expense',amount:r2(amount),category:$('#qc').value,walletId:w,date,time:autoTime(date),note:r.title,reminderId:r.id};S.txs.push(t);txId=t.id}
       r.history=r.history||[];r.history.push({id:uid(),date,amount:amount>0?r2(amount):0,txId,due:r.dueMode==='date'?r.date:r.month});
       if(amount>0)r.amount=r2(amount);
       if(isRec(r)){advanceRem(r);commit(`${V.pay} ✓ · الموعد القادم: ${remNextText(r)}`)}
