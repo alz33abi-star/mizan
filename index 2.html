@@ -226,6 +226,19 @@ div.row[data-act]:active{background:var(--fill)}
 .adv[open]>summary{margin-bottom:2px}
 .up-sum{display:flex;gap:14px;flex-wrap:wrap;font-size:13px;color:var(--text2);margin:10px 4px 8px}
 .up-sum b{color:var(--text)}
+.calc-total{background:var(--card);border-radius:18px;padding:16px;text-align:center;box-shadow:var(--shadow)}
+.calc-total input{border:0;background:none;outline:none;text-align:center;font-size:38px;font-weight:700;width:100%;direction:ltr;color:var(--text)}
+.calc-total .lbl{color:var(--text2);font-size:13px}
+.calc-sum{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
+.calc-bar{display:flex;height:12px;border-radius:8px;overflow:hidden;background:var(--fill);margin-top:12px;gap:2px}
+.calc-bar i{display:block;height:100%}
+.crow{display:grid;grid-template-columns:12px 1fr 118px 30px;gap:8px;align-items:center;padding:8px 12px;position:relative}
+.crow+.crow::before{content:"";position:absolute;top:0;right:12px;left:0;height:1px;transform:scaleY(.5);background:var(--sep)}
+.crow .cdot{width:10px;height:10px;border-radius:3px}
+.crow input{border:0;background:var(--fill);border-radius:8px;padding:9px 8px;font-size:15px;min-width:0;width:100%;outline:none}
+.crow .cv{grid-column:2/4;font-size:12px;color:var(--text2);margin-top:-4px;text-align:end;direction:ltr}
+.crow .x{border:0;background:none;color:var(--exp);font-size:22px;line-height:1;padding:0}
+.plan-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}
 /* reports */
 .card{background:var(--card);border-radius:16px;padding:16px;box-shadow:var(--shadow);margin-top:12px}
 .card h3{margin:0 0 2px;font-size:17px}
@@ -241,7 +254,7 @@ div.row[data-act]:active{background:var(--fill)}
 /* tab bar */
 .tabbar{position:fixed;inset:auto 0 0 0;z-index:20;background:var(--tabbar);-webkit-backdrop-filter:saturate(180%) blur(20px);backdrop-filter:saturate(180%) blur(20px);
   border-top:1px solid var(--sep);padding:6px 8px calc(6px + env(safe-area-inset-bottom))}
-.tabbar .in{max-width:680px;margin:0 auto;display:grid;grid-template-columns:repeat(4,1fr)}
+.tabbar .in{max-width:680px;margin:0 auto;display:grid;grid-template-columns:repeat(5,1fr)}
 .tab{border:0;background:none;display:flex;flex-direction:column;align-items:center;gap:2px;padding:4px 0;color:var(--text3);font-size:11px;font-weight:500}
 .tab svg{width:26px;height:26px}
 .tab.on{color:var(--accent)}
@@ -309,6 +322,7 @@ textarea.code{width:100%;min-height:120px;border:0;border-radius:12px;background
 <main id="p-tx" class="page"></main>
 <main id="p-debts" class="page"></main>
 <main id="p-reports" class="page"></main>
+<main id="p-calc" class="page"></main>
 
 <nav class="tabbar" aria-label="التنقل">
   <div class="in">
@@ -316,6 +330,7 @@ textarea.code{width:100%;min-height:120px;border:0;border-radius:12px;background
     <button class="tab" data-tab="tx"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m16 3 4 4-4 4"/><path d="M20 7H8"/><path d="m8 21-4-4 4-4"/><path d="M4 17h12"/></svg>المعاملات</button>
     <button class="tab" data-tab="debts"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2.5"/><path d="M8 8h8M8 12h8M8 16h4"/></svg>الالتزامات</button>
     <button class="tab" data-tab="reports"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 20h18"/><rect x="5" y="11" width="3" height="6" rx="1"/><rect x="10.5" y="5" width="3" height="12" rx="1"/><rect x="16" y="8" width="3" height="9" rx="1"/></svg>التقارير</button>
+    <button class="tab" data-tab="calc"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2.5" width="14" height="19" rx="2.5"/><rect x="8" y="5.5" width="8" height="4" rx="1"/><path d="M8.5 13h.01M12 13h.01M15.5 13h.01M8.5 16.5h.01M12 16.5h.01M15.5 16.5h.01"/></svg>الحاسبة</button>
   </div>
 </nav>
 
@@ -463,7 +478,7 @@ const ICON={
 /* ============ storage ============ */
 const KEY='mizan-finance-v1';
 let S;
-function blank(){return {version:1,settings:{theme:'auto',palette:'gold',currency:'AED_SYM',budget:0,firstUse:today(),lastBackup:'',symMigrated:true},wallets:[],txs:[],debts:[],reminders:[],categories:null}}
+function blank(){return {version:1,settings:{theme:'auto',palette:'gold',currency:'AED_SYM',budget:0,firstUse:today(),lastBackup:'',symMigrated:true},wallets:[],txs:[],debts:[],reminders:[],categories:null,plans:[],planDraft:null}}
 function load(){
   try{const raw=localStorage.getItem(KEY);if(raw){const d=JSON.parse(raw);if(d&&Array.isArray(d.wallets))return normalize(d)}}catch(e){}
   return seed();
@@ -473,7 +488,7 @@ function normalize(d){
   if(d.settings&&!d.settings.symMigrated){if(['ر.س','د.إ','AED','درهم',''].includes(d.settings.currency||''))d.settings.currency='AED_SYM';d.settings.symMigrated=true}
   (d.txs||[]).forEach(t=>{if(t.ts==null)t.ts=0});
   return {version:1,settings:{...b.settings,...(d.settings||{})},wallets:d.wallets||[],txs:d.txs||[],
-    debts:(d.debts||[]).map(migrateDebt),reminders:d.reminders||[],categories:d.categories||null};
+    debts:(d.debts||[]).map(migrateDebt),reminders:d.reminders||[],categories:d.categories||null,plans:d.plans||[],planDraft:d.planDraft||null};
 }
 function migrateDebt(x){
   const d={payments:[],schedule:[],openingPaid:0,freq:'monthly',autoPay:false,autoWalletId:'',autoFrom:'',...x};
@@ -678,7 +693,7 @@ function go(t){
   render();window.scrollTo(0,0);
 }
 function render(){
-  if(tab==='home')renderHome();else if(tab==='tx')renderTx();else if(tab==='debts')renderDebts();else renderReports();
+  if(tab==='home')renderHome();else if(tab==='tx')renderTx();else if(tab==='debts')renderDebts();else if(tab==='calc')renderCalc();else renderReports();
 }
 function commit(msg){save();render();if(msg)toast(msg)}
 
@@ -862,6 +877,124 @@ function upcomingAllHTML(){
   ${items.length?`<div class="up-sum"><span>داخل <b class="pos">${money(ins,{dec:false})}</b></span><span>خارج <b class="neg">${money(outs,{dec:false})}</b></span><span>الصافي <b class="${ins-outs<0?'neg':''}">${money(ins-outs,{dec:false})}</b></span>${late?`<span class="neg">${fmtN(late,false)} متأخر</span>`:''}</div>`:''}
   <div class="group" ${items.length?'':'style="margin-top:8px"'}>${items.length?shown.map(i=>i.k==='rem'?remRow(i.r):debtDueRow(i.x)).join(''):`<div class="empty"><b>لا شيء قادم</b>${dueView==='next'?'لا دفعات أو دخل في الشهر القادم.':'لا دفعات أو دخل في هذه الفترة.'}</div>`}
   ${items.length>LIM?`<button class="row" data-act="up-all" style="justify-content:center;color:var(--accent);font-weight:600">${upcomingAll?'عرض أقل':`عرض الكل (${fmtN(items.length,false)})`}</button>`:''}</div>`;
+}
+const CALC_COLORS=['#C9A227','#2F6FDB','#DB2777','#16A34A','#7A5AF8','#E8833A','#0EA5A4','#B45309','#6366F1','#78716C'];
+function calcEval(v,total){
+  let str=String(v??'').trim();if(!str)return 0;
+  str=str.replace(/[٠-٩]/g,d=>'٠١٢٣٤٥٦٧٨٩'.indexOf(d)).replace(/[٫]/g,'.').replace(/[،,]/g,'').replace(/[×xX]/g,'*').replace(/[÷]/g,'/').replace(/\s+/g,'');
+  const pm=str.match(/^(\d+(?:\.\d+)?)%$/);if(pm)return r2((+pm[1])*(+total||0)/100);
+  if(!/^[\d+\-*/().]+$/.test(str))return NaN;
+  try{const v2=Function('"use strict";return ('+str+')')();return isFinite(v2)?r2(v2):NaN}catch(e){return NaN}
+}
+function calcDraft(){
+  if(!S.planDraft)S.planDraft={id:null,name:'',total:'',items:[{id:uid(),name:'',amount:''}]};
+  return S.planDraft;
+}
+function calcTotals(pl){
+  const total=calcEval(pl.total,0);const T=isNaN(total)?0:total;
+  const vals=pl.items.map(it=>{const v=calcEval(it.amount,T);return isNaN(v)?0:v});
+  const used=r2(vals.reduce((a,v)=>a+v,0));
+  return {total:T,vals,used,left:r2(T-used),bad:isNaN(total)};
+}
+function calcSummaryHTML(pl){
+  const c=calcTotals(pl);const base=Math.max(c.total,c.used)||1;
+  return `<div class="calc-sum">
+      <div class="tile"><div class="k"><i style="background:var(--exp)"></i>الموزّع</div><div class="v">${money(c.used)}</div><div class="t2" style="font-size:12px">${c.total?fmtN(c.used/c.total*100,false)+'%':''}</div></div>
+      <div class="tile"><div class="k"><i style="background:var(--inc)"></i>المتبقي</div><div class="v ${c.left<0?'neg':'pos'}">${money(c.left)}</div><div class="t2" style="font-size:12px">${c.left<0?'تجاوزت المبلغ':(c.total?fmtN(c.left/c.total*100,false)+'%':'')}</div></div>
+    </div>
+    <div class="calc-bar">${pl.items.map((it,k)=>c.vals[k]>0?`<i style="width:${c.vals[k]/base*100}%;background:${CALC_COLORS[k%CALC_COLORS.length]}"></i>`:'').join('')}${c.left>0?`<i style="flex:1;background:var(--incSoft)"></i>`:''}</div>`;
+}
+function updateCalcLive(){
+  const pl=calcDraft();const c=calcTotals(pl);
+  const box=$('#calcSum');if(box)box.innerHTML=calcSummaryHTML(pl);
+  $$('#calcRows .crow').forEach((row,k)=>{const it=pl.items[k];if(!it)return;const cv=$('.cv',row);if(!cv)return;
+    const raw=String(it.amount||'').trim();const v=c.vals[k];
+    cv.textContent=raw&&!/^\d+(\.\d+)?$/.test(raw.replace(/[,،]/g,''))?(isNaN(calcEval(raw,c.total))?'⚠ صيغة غير صحيحة':'= '+fmtN(v)):'';});
+  const ti=$('#calcTotalHint');if(ti){const raw=String(pl.total||'').trim();ti.textContent=raw&&!/^\d+(\.\d+)?$/.test(raw.replace(/[,،]/g,''))?(c.bad?'⚠ صيغة غير صحيحة':'= '+fmtN(c.total)):'المبلغ الذي تريد توزيعه'}
+  save();
+}
+function renderCalc(){
+  const pl=calcDraft();const c=calcTotals(pl);
+  const plans=[...(S.plans||[])].sort((a,b)=>(b.updated||'').localeCompare(a.updated||''));
+  const editing=pl.id&&plans.find(x=>x.id===pl.id);
+  const bal=totalBalance();
+  $('#p-calc').innerHTML=`
+  <div class="top">
+    <div><h1>الحاسبة</h1><div class="sub">${editing?`تعديل: ${esc(editing.name)}`:'جرّب توزيع أي مبلغ'}</div></div>
+    <div class="actions"><button class="iconbtn" data-act="calc-new" aria-label="حسبة جديدة">${ICON.plus}</button></div>
+  </div>
+  <div class="calc-total">
+    <div class="lbl" id="calcTotalHint">المبلغ الذي تريد توزيعه</div>
+    <input id="calcTotal" inputmode="decimal" placeholder="0" value="${esc(pl.total)}">
+    <div class="qchips" style="justify-content:center;padding:4px 0 0">
+      <button class="chip" data-act="calc-fill" data-v="${r2(bal)}">رصيدي ${fmtN(bal,false)}</button>
+      ${(()=>{const f=forecast(shiftMonth(curPeriod(),1));return f.income?`<button class="chip" data-act="calc-fill" data-v="${r2(f.income)}">دخل الشهر القادم ${fmtN(f.income,false)}</button>`:''})()}
+    </div>
+  </div>
+  <div id="calcSum">${calcSummaryHTML(pl)}</div>
+  <div class="flabel">التوزيع</div>
+  <div class="group" id="calcRows">${pl.items.map((it,k)=>`
+    <div class="crow" data-k="${k}">
+      <span class="cdot" style="background:${CALC_COLORS[k%CALC_COLORS.length]}"></span>
+      <input data-f="name" value="${esc(it.name)}" placeholder="البند ${fmtN(k+1,false)}" maxlength="40">
+      <input data-f="amount" value="${esc(it.amount)}" inputmode="decimal" placeholder="المبلغ أو 10%" style="direction:ltr;text-align:end">
+      <button class="x" data-act="calc-del" data-k="${k}" aria-label="حذف البند">×</button>
+      <div class="cv"></div>
+    </div>`).join('')}</div>
+  <div class="btns" style="margin-top:8px"><button class="btn ghost block" data-act="calc-add">+ إضافة بند</button></div>
+  <div class="note">اكتب مبلغًا، أو نسبة مثل 10%، أو عملية مثل 1200+350 أو 500*3.</div>
+  <div class="plan-actions">
+    <button class="btn" data-act="calc-save">${editing?'حفظ التعديلات':'حفظ الحسبة'}</button>
+    <button class="btn ghost" data-act="calc-clear">${editing?'حسبة جديدة':'مسح'}</button>
+  </div>
+  ${editing?`<div class="btns" style="margin-top:8px"><button class="btn ghost block" data-act="calc-saveas">حفظ كنسخة جديدة</button></div>`:''}
+  <div class="section-h"><h2>الحسبات المحفوظة</h2><span class="t2">${fmtN(plans.length,false)}</span></div>
+  <div class="group">${plans.length?plans.map(x=>{const t=calcTotals(x);return `
+    <button class="row" data-act="calc-open" data-id="${x.id}" ${pl.id===x.id?'style="background:var(--accentSoft)"':''}>
+      <div class="ic" style="background:var(--accentSoft);color:var(--accent)">🧮</div>
+      <div class="grow"><div class="t1">${esc(x.name)}</div><div class="t2">${money(t.total,{dec:false})} · ${fmtN(x.items.filter(i=>String(i.amount||'').trim()).length,false)} بند · ${dateStr(x.updated)}</div></div>
+      <div style="text-align:end"><div class="amt ${t.left<0?'neg':'pos'}">${money(t.left,{dec:false})}</div><div class="t2" style="font-size:11px">متبقٍ</div></div>
+    </button>`}).join(''):'<div class="empty"><b>لا توجد حسبات محفوظة</b>جرّب توزيع مبلغ ثم اضغط «حفظ الحسبة» لتعود إليها لاحقًا.</div>'}</div>`;
+  const tot=$('#calcTotal');tot.oninput=e=>{pl.total=e.target.value;updateCalcLive()};
+  $$('#calcRows .crow').forEach(row=>{const k=+row.dataset.k;
+    $$('input',row).forEach(inp=>inp.oninput=e=>{pl.items[k][inp.dataset.f]=e.target.value;updateCalcLive()})});
+  updateCalcLive();
+}
+function calcSaveSheet(asNew){
+  const pl=calcDraft();const ex=!asNew&&pl.id&&(S.plans||[]).find(x=>x.id===pl.id);
+  const c=calcTotals(pl);
+  if(!c.total&&!pl.items.some(i=>String(i.amount||'').trim())){toast('اكتب مبلغًا أولًا');return}
+  if(c.bad){toast('صيغة المبلغ غير صحيحة');return}
+  const doSave=name=>{
+    const rec={name,total:pl.total,items:pl.items.filter(i=>String(i.name||'').trim()||String(i.amount||'').trim()).map(i=>({...i})),updated:today()};
+    if(!rec.items.length)rec.items=[{id:uid(),name:'',amount:''}];
+    if(ex){Object.assign(ex,rec);pl.name=name}
+    else{const n={id:uid(),...rec};S.plans=S.plans||[];S.plans.push(n);pl.id=n.id;pl.name=name}
+    commit(ex?'حُفظت التعديلات':'حُفظت الحسبة');
+  };
+  if(ex){doSave(ex.name);return}
+  openSheet({title:asNew?'حفظ كنسخة جديدة':'حفظ الحسبة',saveLabel:'حفظ',body:`
+    <div class="field-group" style="margin-top:8px"><div class="field"><label for="cpn">الاسم</label><input id="cpn" value="${esc(asNew&&pl.name?pl.name+' (نسخة)':'')}" placeholder="مثال: توزيع راتب نوفمبر" maxlength="40"></div></div>
+    <div class="note">المبلغ ${money(c.total)} · المتبقي ${money(c.left)}</div>`,
+    onMount(ov){setTimeout(()=>$('#cpn',ov)?.focus(),300)},
+    onSave(){const n=$('#cpn').value.trim();if(!n){toast('اكتب اسمًا للحسبة');return false}doSave(n)}});
+}
+function calcOpenSheet(id){
+  const x=(S.plans||[]).find(p=>p.id===id);if(!x)return;const c=calcTotals(x);
+  openSheet({title:x.name,noSave:true,body:`
+    <div class="amount-in"><span>المبلغ ${money(c.total)}</span><div style="font-size:30px;font-weight:700" class="${c.left<0?'neg':'pos'}">${money(c.left)}</div><span>متبقٍ</span></div>
+    <div class="group" style="margin-top:12px">${x.items.filter(i=>String(i.amount||'').trim()).map((i,k)=>`<div class="row"><span class="cdot" style="width:10px;height:10px;border-radius:3px;background:${CALC_COLORS[k%CALC_COLORS.length]}"></span><div class="grow"><div class="t1">${esc(i.name||'بند')}</div></div><div class="amt">${money(c.vals[x.items.indexOf(i)])}</div></div>`).join('')||'<div class="empty">لا بنود</div>'}</div>
+    <div class="btns">
+      <button class="btn block" id="cpo">فتح وتعديل</button>
+      <button class="btn ghost block" id="cpr">إعادة التسمية</button>
+      <button class="btn danger block" id="cpd">حذف الحسبة</button>
+    </div>`,
+    onMount(ov){
+      $('#cpo',ov).onclick=()=>{S.planDraft={id:x.id,name:x.name,total:x.total,items:x.items.map(i=>({...i}))};closeSheet();commit();window.scrollTo(0,0)};
+      $('#cpr',ov).onclick=()=>{closeSheet();openSheet({title:'إعادة التسمية',saveLabel:'حفظ',body:`<div class="field-group" style="margin-top:8px"><div class="field"><label for="cpn2">الاسم</label><input id="cpn2" value="${esc(x.name)}" maxlength="40"></div></div>`,
+        onSave(){const n=$('#cpn2').value.trim();if(!n){toast('اكتب اسمًا');return false}x.name=n;if(S.planDraft&&S.planDraft.id===x.id)S.planDraft.name=n;commit('تمت إعادة التسمية')}})};
+      $('#cpd',ov).onclick=()=>confirmBox('حذف الحسبة؟','لا يمكن التراجع.','حذف',()=>{S.plans=S.plans.filter(p=>p.id!==x.id);if(S.planDraft&&S.planDraft.id===x.id)S.planDraft.id=null;closeSheet();commit('حُذفت الحسبة')});
+    }});
 }
 function newUpcomingSheet(){
   openSheet({title:'إضافة',noSave:true,body:`
@@ -1842,6 +1975,15 @@ document.addEventListener('click',e=>{
     case 'due-view':dueView=el.dataset.k;upcomingAll=false;renderHome();break;
     case 'up-all':upcomingAll=!upcomingAll;renderHome();break;
     case 'new-upcoming':newUpcomingSheet();break;
+    case 'calc-add':{const pl=calcDraft();pl.items.push({id:uid(),name:'',amount:''});save();renderCalc();const r=$$('#calcRows .crow');r[r.length-1]?.querySelector('input')?.focus();break}
+    case 'calc-del':{const pl=calcDraft();pl.items.splice(+el.dataset.k,1);if(!pl.items.length)pl.items.push({id:uid(),name:'',amount:''});save();renderCalc();break}
+    case 'calc-fill':{const pl=calcDraft();pl.total=String(el.dataset.v);save();renderCalc();break}
+    case 'calc-save':calcSaveSheet(false);break;
+    case 'calc-saveas':calcSaveSheet(true);break;
+    case 'calc-open':calcOpenSheet(id);break;
+    case 'calc-new':case 'calc-clear':{const pl=calcDraft();
+      const go2=()=>{S.planDraft={id:null,name:'',total:'',items:[{id:uid(),name:'',amount:''}]};save();renderCalc()};
+      if(!pl.id&&(String(pl.total).trim()||pl.items.some(i=>String(i.amount||'').trim())))confirmBox('مسح الحسبة الحالية؟','الحسبة غير محفوظة وستُمسح.','مسح',go2);else go2();break}
     case 'fc-view':forecastView=el.dataset.k;renderHome();break;
     case 'fc-pri':S.settings.forecastPri=+el.dataset.k;save();renderHome();break;
     case 'quickpay':paymentSheet(id,+el.dataset.amt);break;
